@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   linux:
     name: Build Linux Desktop App
@@ -56,7 +59,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p desktop-artifacts
-          find . -maxdepth 8 -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) -not -path "./node_modules/*" -exec cp {} desktop-artifacts/ \;
+          find . -maxdepth 8 -type f \( -name "*.AppImage" -o -name "*.deb" \) -not -path "./node_modules/*" -exec cp {} desktop-artifacts/ \;
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -98,7 +101,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path desktop-artifacts
-          Get-ChildItem -Recurse -File -Include *.exe,*.msi |
+          Get-ChildItem -Recurse -File -Include *.msi |
             Where-Object { $_.FullName -notmatch '\\node_modules\\' } |
             Copy-Item -Destination desktop-artifacts
 
@@ -142,10 +145,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p desktop-artifacts
-          find . -maxdepth 8 -type f \( -name "*.dmg" -o -name "*.app.tar.gz" \) -not -path "./node_modules/*" -exec cp {} desktop-artifacts/ \;
-          while IFS= read -r app; do
-            ditto -c -k --sequesterRsrc --keepParent "$app" "desktop-artifacts/$(basename "$app").zip"
-          done < <(find . -maxdepth 8 -type d -name "*.app" -not -path "./node_modules/*")
+          find . -maxdepth 8 -type f -name "*.dmg" -not -path "./node_modules/*" -exec cp {} desktop-artifacts/ \;
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -153,3 +153,32 @@ jobs:
           name: BacklogTracker-macos
           path: desktop-artifacts/*
           if-no-files-found: error
+
+  release:
+    name: Upload Desktop Release Assets
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: BacklogTracker-*
+          merge-multiple: true
+
+      - name: Upload packages to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/**/*.msi
+            release-artifacts/**/*.deb
+            release-artifacts/**/*.AppImage
+            release-artifacts/**/*.dmg
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
