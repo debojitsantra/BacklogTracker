@@ -110,9 +110,7 @@ export default function App() {
   });
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [helpModalOpen, setHelpModalOpen] = useState<boolean>(() => {
-    return localStorage.getItem('backlog_tracker_help_seen') !== 'true';
-  });
+  const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [showQuotes, setShowQuotes] = useState<boolean>(() => {
     const saved = localStorage.getItem('show_quotes');
     return saved !== 'false';
@@ -129,6 +127,12 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (wizardOpen || localStorage.getItem('backlog_tracker_help_seen') === 'true') return;
+    const timer = window.setTimeout(() => setHelpModalOpen(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [wizardOpen]);
+
+  useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
       document.body.classList.add('dark');
@@ -138,6 +142,16 @@ export default function App() {
     }
     localStorage.setItem('darkMode', String(darkMode));
   }, [darkMode]);
+
+  useEffect(() => {
+    const preventCopyOrCut = (event: ClipboardEvent) => event.preventDefault();
+    document.addEventListener('copy', preventCopyOrCut);
+    document.addEventListener('cut', preventCopyOrCut);
+    return () => {
+      document.removeEventListener('copy', preventCopyOrCut);
+      document.removeEventListener('cut', preventCopyOrCut);
+    };
+  }, []);
 
   useEffect(() => {
     const color = data.palette_color || '#6750a4';
@@ -191,6 +205,11 @@ export default function App() {
         setSettingsModalOpen(false);
         return;
       }
+      if (offlineSyncReport) {
+        event.stopImmediatePropagation();
+        setOfflineSyncReport(null);
+        return;
+      }
       if (!wizardOpen) {
         event.stopImmediatePropagation();
         requestAppExit();
@@ -203,7 +222,7 @@ export default function App() {
       window.removeEventListener('android-back-button', handleBackButton, true);
       window.removeEventListener('app-request-exit', handleExitRequest);
     };
-  }, [helpModalOpen, requestAppExit, settingsModalOpen, wizardOpen]);
+  }, [helpModalOpen, offlineSyncReport, requestAppExit, settingsModalOpen, wizardOpen]);
 
   const runDailyBacklogGrowth = useCallback(() => {
     if (!data.setup_done || !data.subjects || Object.keys(data.subjects).length === 0) return;
@@ -591,7 +610,6 @@ export default function App() {
   if (wizardOpen) {
     return (
       <>
-        <DeferredScreen><HelpModal isOpen={helpModalOpen} onClose={closeHelpModal} context="setup" /></DeferredScreen>
         <DeferredScreen><SetupWizard
           initialData={data}
           onSave={handleSaveData}
@@ -804,31 +822,33 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
-              <button
-                onClick={() => handleGlobalCpdChange(data.classes_per_day - 1)}
-                type="button"
-                className="w-10 h-10 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-transparent dark:border-brand-container/60 font-bold flex items-center justify-center transition-all"
-                style={{ minWidth: '40px', minHeight: '40px' }}
-              >
-                <Minus className="w-4 h-4" />
-              </button>
-              <input
-                type="number"
-                min="1"
-                value={data.classes_per_day}
-                onChange={e => handleGlobalCpdChange(parseInt(e.target.value) || 1)}
-                className="bg-brand-container text-center font-mono font-bold text-lg w-16 py-1.5 rounded-xl text-brand border border-[#cac4d0]/30 dark:border-brand-container focus:outline-none"
-              />
-              <button
-                onClick={() => handleGlobalCpdChange(data.classes_per_day + 1)}
-                type="button"
-                className="w-10 h-10 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-transparent dark:border-brand-container/60 font-bold flex items-center justify-center transition-all"
-                style={{ minWidth: '40px', minHeight: '40px' }}
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-              <span className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold font-mono pl-1">items/day</span>
+            <div className="relative flex w-full md:w-[280px] items-center justify-center">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleGlobalCpdChange(data.classes_per_day - 1)}
+                  type="button"
+                  className="w-10 h-10 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-transparent dark:border-brand-container/60 font-bold flex items-center justify-center transition-all"
+                  style={{ minWidth: '40px', minHeight: '40px' }}
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <input
+                  type="number"
+                  min="1"
+                  value={data.classes_per_day}
+                  onChange={e => handleGlobalCpdChange(parseInt(e.target.value) || 1)}
+                  className="bg-brand-container text-center font-mono font-bold text-lg w-16 py-1.5 rounded-xl text-brand border border-[#cac4d0]/30 dark:border-brand-container focus:outline-none"
+                />
+                <button
+                  onClick={() => handleGlobalCpdChange(data.classes_per_day + 1)}
+                  type="button"
+                  className="w-10 h-10 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-transparent dark:border-brand-container/60 font-bold flex items-center justify-center transition-all"
+                  style={{ minWidth: '40px', minHeight: '40px' }}
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <span className="absolute right-0 text-xs text-[#49454f] dark:text-[#cac4d0] font-bold font-mono">items/day</span>
             </div>
           </section>
         )}

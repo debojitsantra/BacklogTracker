@@ -1,0 +1,11 @@
+feat: improve mobile UX, onboarding, presets, and Android launch flow
+
+  - add native branded Android splash and adaptive launcher icon
+  - add reliable Android back navigation with double-back exit on home
+  - launch the interactive help
+  - improve custom presets, import guidance, and backup overwrite warnings
+  - simplify color selection with expanded preset palettes
+  - improve mobile layouts, borders, and completion target alignment
+  - fix date, import validation, ETA, and simulated-time calculations
+  - fix backlog simulation, ETA, date handling, import validation, and preset restore bugs
+

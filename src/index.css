@@ -50,6 +50,11 @@ html {
   text-size-adjust: 100%;
 }
 
+body, body *, input, textarea, select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 button, input, select, textarea {
   touch-action: manipulation;
 }
@@ -65,7 +70,7 @@ button, input, select, textarea {
   gap: 18px;
   background: #fef7ff;
   color: #6750a4;
-  animation: startup-splash-exit 280ms ease-out 420ms forwards;
+  animation: startup-splash-exit 280ms ease-out 720ms forwards;
 }
 
 .dark .app-startup-splash {

@@ -10,7 +10,7 @@ import { PRESET_SUBJECTS, PALETTE } from '../data';
 import { AppData, CustomPreset, Subject } from '../types';
 import { getLocalDateString } from '../utils/date';
 import { validateAndParseImport } from '../utils/validation';
-import { Plus, Trash2, Palette, Sparkles, AlertCircle, CheckCircle, Upload, X, Check, FileJson, CalendarDays, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, Palette, Sparkles, AlertCircle, AlertTriangle, CheckCircle, Upload, X, Check, FileJson, CalendarDays, HelpCircle } from 'lucide-react';
 
 const EmojiPicker = lazy(() => import('emoji-picker-react'));
 
@@ -39,14 +39,6 @@ const WEEK_DAYS = [
 ];
 
 type ScheduleMode = 'none' | 'perday' | 'repeat';
-
-function isColorLight(color: string): boolean {
-  const hex = color.replace('#', '');
-  const red = parseInt(hex.slice(0, 2), 16);
-  const green = parseInt(hex.slice(2, 4), 16);
-  const blue = parseInt(hex.slice(4, 6), 16);
-  return (red * 299 + green * 587 + blue * 114) / 1000 > 140;
-}
 
 const TRACKING_TYPES: Record<string, { label: string; emoji: string; title: string; entries: Array<{ name: string; emoji: string; color: string; completion_mode?: 'todo' | 'backlog' }> }> = {
   study: {
@@ -202,9 +194,6 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
   const [activeEmojiIdx, setActiveEmojiIdx] = useState<number | null>(null);
   const [categoryEmojiPickerOpen, setCategoryEmojiPickerOpen] = useState(false);
   const [colorPickerIdx, setColorPickerIdx] = useState<number | null>(null);
-  const [customColorDraft, setCustomColorDraft] = useState<string | null>(null);
-  const colorPressTimerRef = useRef<number | null>(null);
-  const didLongPressColorRef = useRef(false);
 
   const [showImportPanel, setShowImportPanel] = useState(false);
   const [importText, setImportText] = useState('');
@@ -214,12 +203,13 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     type?: 'course_design' | 'full_backup';
     parsedData?: AppData;
   } | null>(null);
+  const [pendingFullBackup, setPendingFullBackup] = useState<AppData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleBackButton = () => {
-      if (customColorDraft !== null) {
-        setCustomColorDraft(null);
+      if (pendingFullBackup !== null) {
+        setPendingFullBackup(null);
       } else if (colorPickerIdx !== null) {
         setColorPickerIdx(null);
       } else if (activeEmojiIdx !== null) {
@@ -243,7 +233,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     };
     window.addEventListener('android-back-button', handleBackButton);
     return () => window.removeEventListener('android-back-button', handleBackButton);
-  }, [activeEmojiIdx, categoryEmojiPickerOpen, colorPickerIdx, customColorDraft, editorOpen, onCancel, showEditorHelp, showImportPanel]);
+  }, [activeEmojiIdx, categoryEmojiPickerOpen, colorPickerIdx, editorOpen, onCancel, pendingFullBackup, showEditorHelp, showImportPanel]);
 
   const togglePreset = (name: string) => {
     if (selectedPresets.includes(name)) {
@@ -419,36 +409,6 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     setEditingSubjects(editingSubjects.filter((_, i) => i !== index));
   };
 
-  const cycleEditingColor = (index: number) => {
-    const currentColor = editingSubjects[index].color;
-    const currentIdx = PALETTE.indexOf(currentColor);
-    const nextIdx = (currentIdx + 1) % PALETTE.length;
-    updateEditingSubject(index, { color: PALETTE[nextIdx] });
-  };
-
-  const startColorPress = (index: number) => {
-    didLongPressColorRef.current = false;
-    colorPressTimerRef.current = window.setTimeout(() => {
-      didLongPressColorRef.current = true;
-      setColorPickerIdx(index);
-    }, 650);
-  };
-
-  const endColorPress = () => {
-    if (colorPressTimerRef.current !== null) {
-      window.clearTimeout(colorPressTimerRef.current);
-      colorPressTimerRef.current = null;
-    }
-  };
-
-  const handleColorClick = (index: number) => {
-    if (didLongPressColorRef.current) {
-      didLongPressColorRef.current = false;
-      return;
-    }
-    cycleEditingColor(index);
-  };
-
   const handleEditingScheduleModeChange = (index: number, mode: ScheduleMode) => {
     const currentGrowth = editingSubjects[index].daily_increase;
     updateEditingSubject(index, {
@@ -574,13 +534,21 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
         onImportCourseDesign(parsedData);
       }
     } else {
-      if (confirm('Importing this Full Backup will overwrite all your current statistics, subjects, and backlog values. Do you want to proceed?')) {
-        onSave(parsedData);
-      }
+      setPendingFullBackup(parsedData);
+      return;
     }
     setShowImportPanel(false);
     setImportText('');
     setImportValidation(null);
+  };
+
+  const confirmFullBackupImport = () => {
+    if (!pendingFullBackup) return;
+    setPendingFullBackup(null);
+    setShowImportPanel(false);
+    setImportText('');
+    setImportValidation(null);
+    onSave(pendingFullBackup);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -996,7 +964,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
 
               <p className="text-[11px] text-[#49454f] dark:text-[#cac4d0] leading-relaxed">
                 {customSubjects.length > 0 ? <>
-                  These are only examples. Tap <span className="font-bold text-brand">Edit items</span> to add your own, rename, or remove anything you do not want to track.
+                  {activeCustomPresetId ? 'This imported preset contains only examples. ' : 'These are only examples. '}Tap <span className="font-bold text-brand">Edit items</span> to add your own, rename, or remove anything you do not want to track.
                 </> : <>
                   Your custom list is empty. Tap <span className="font-bold text-brand">Edit items</span>, then use <span className="font-bold text-brand">Add item</span> to create your first item.
                 </>}
@@ -1301,16 +1269,11 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
 
                               <button
                                 type="button"
-                                onPointerDown={() => startColorPress(idx)}
-                                onPointerUp={endColorPress}
-                                onPointerCancel={endColorPress}
-                                onPointerLeave={endColorPress}
-                                onContextMenu={event => event.preventDefault()}
-                                onClick={() => handleColorClick(idx)}
+                                onClick={() => setColorPickerIdx(idx)}
                                 aria-label="Change item color"
                                 className="w-9 h-9 rounded-xl flex items-center justify-center transition-all border border-transparent dark:border-[#24262f] hover:border-neutral-400 cursor-pointer"
                                 style={{ backgroundColor: sub.color }}
-                                title="Cycle Palette Color"
+                                title="Choose item color"
                               >
                                 <Palette className="w-4 h-4 text-white drop-shadow-sm" />
                               </button>
@@ -1535,8 +1498,8 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                         className="relative w-full max-w-xs rounded-2xl bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/60 dark:border-[#454854] p-4 shadow-2xl"
                       >
                         <h4 className="text-sm font-bold text-[#1d1b20] dark:text-white">Choose item color</h4>
-                        <p className="text-[11px] text-[#49454f] dark:text-[#cac4d0] mt-1">Tap a color to select it. A quick tap on the swatch still cycles colors.</p>
-                        <div className="grid grid-cols-5 gap-3 mt-4">
+                        <p className="text-[11px] text-[#49454f] dark:text-[#cac4d0] mt-1">Choose from the curated palette.</p>
+                        <div className="grid grid-cols-6 gap-2.5 mt-4">
                           {PALETTE.map(color => (
                             <button
                               key={color}
@@ -1550,15 +1513,6 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                               aria-label={`Select ${color}`}
                             />
                           ))}
-                          <button
-                            type="button"
-                            onClick={() => setCustomColorDraft(editingSubjects[colorPickerIdx]?.color || '#6750a4')}
-                            className="w-10 h-10 rounded-xl border-2 border-dashed border-brand/70 bg-brand-container text-brand flex flex-col items-center justify-center cursor-pointer text-[8px] font-bold leading-none"
-                            title="Choose a custom color"
-                          >
-                            <span className="text-sm leading-none">+</span>
-                            Custom
-                          </button>
                         </div>
                         <button type="button" onClick={() => setColorPickerIdx(null)} className="w-full mt-4 py-2 rounded-full bg-brand-container text-brand text-xs font-bold">Cancel</button>
                       </motion.div>
@@ -1566,33 +1520,39 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                   )}
                 </AnimatePresence>
 
-                <AnimatePresence>
-                  {customColorDraft !== null && colorPickerIdx !== null && (
-                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                      <div className="relative w-full max-w-xs rounded-2xl bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/60 dark:border-[#454854] p-5 shadow-2xl">
-                        <h4 className="text-sm font-bold text-[#1d1b20] dark:text-white">Custom color</h4>
-                        <p className="text-[11px] text-[#49454f] dark:text-[#cac4d0] mt-1">Choose a color, preview it below, then confirm.</p>
-                        <div className="mt-4 rounded-2xl p-4 border border-[#cac4d0]/40 dark:border-[#454854]" style={{ backgroundColor: customColorDraft }}>
-                          <span className="text-xs font-black" style={{ color: isColorLight(customColorDraft) ? '#1d1b20' : '#ffffff' }}>Item color preview</span>
-                        </div>
-                        <div className="mt-4 flex items-center gap-3 bg-brand-container rounded-xl p-3">
-                          <input
-                            type="color"
-                            value={customColorDraft}
-                            onChange={event => setCustomColorDraft(event.target.value)}
-                            className="w-11 h-10 p-0 border-0 bg-transparent cursor-pointer"
-                            aria-label="Choose custom item color"
-                          />
-                          <span className="font-mono text-xs font-bold text-[#1d1b20] dark:text-white uppercase">{customColorDraft}</span>
-                        </div>
-                        <div className="flex gap-2 mt-5">
-                          <button type="button" onClick={() => setCustomColorDraft(null)} className="flex-1 py-2.5 rounded-full bg-brand-container text-brand text-xs font-bold">Cancel</button>
-                          <button type="button" onClick={() => { updateEditingSubject(colorPickerIdx, { color: customColorDraft }); setCustomColorDraft(null); setColorPickerIdx(null); }} className="flex-1 py-2.5 rounded-full bg-brand text-white dark:text-[#111318] text-xs font-bold">OK</button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </AnimatePresence>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {pendingFullBackup && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-[#1d1b20]/65 dark:bg-black/80 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.94, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.94, y: 12 }}
+                className="w-full max-w-sm overflow-hidden rounded-[24px] bg-white dark:bg-[#1a1c22] border border-red-500/30 dark:border-red-400/30 shadow-2xl"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="backup-warning-title"
+              >
+                <div className="p-5 sm:p-6">
+                  <div className="w-11 h-11 rounded-2xl bg-red-500/12 dark:bg-red-400/15 text-red-600 dark:text-red-400 flex items-center justify-center">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <h3 id="backup-warning-title" className="mt-4 text-base font-bold text-[#1d1b20] dark:text-white">Replace current tracker?</h3>
+                  <p className="mt-2 text-xs leading-relaxed text-[#49454f] dark:text-[#cac4d0]">
+                    This full backup will replace your current tracker name, items, progress, schedules, and saved presets. This cannot be undone from the app.
+                  </p>
+                  <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/7 dark:bg-red-400/10 px-3 py-2.5 text-[11px] font-semibold text-red-700 dark:text-red-300">
+                    Backup: {pendingFullBackup.course_name || 'Untitled tracker'} · {Object.keys(pendingFullBackup.subjects || {}).length} items
+                  </div>
+                </div>
+                <div className="flex gap-2 border-t border-[#cac4d0]/25 dark:border-[#24262f]/70 p-4 bg-[#f8f5fa] dark:bg-[#15171d]">
+                  <button type="button" onClick={() => setPendingFullBackup(null)} className="flex-1 min-h-11 rounded-full bg-white dark:bg-[#24262f] border border-[#cac4d0]/35 dark:border-[#454854] text-[#49454f] dark:text-[#e5e1e8] text-xs font-bold">Keep Current</button>
+                  <button type="button" onClick={confirmFullBackupImport} className="flex-1 min-h-11 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm">Replace &amp; Import</button>
+                </div>
               </motion.div>
             </div>
           )}
