@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AppData, Subject } from '../types';
+import { AppData, CustomPreset, Subject } from '../types';
+import { getLocalDateString } from './date';
 
 export interface ValidationResult {
   success: boolean;
@@ -13,6 +14,7 @@ export interface ValidationResult {
 }
 
 const VALID_REPEAT_DAYS = new Set(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 export function validateAndParseImport(jsonString: string): ValidationResult {
   if (!jsonString || !jsonString.trim()) {
@@ -90,6 +92,9 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
         return { success: false, error: `The ${entryLabel} "${trimmedName}" has an invalid color code. Expected a string.` };
       }
       color = sub.color.trim() || '#ba68c8';
+      if (!HEX_COLOR.test(color)) {
+        return { success: false, error: `The ${entryLabel} "${trimmedName}" has an invalid color code. Use a six-digit hex color such as #6750a4.` };
+      }
     }
 
     let perday_type: string | undefined;
@@ -129,7 +134,7 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     let daily_increase = (growth_mode === 'repeat' || growth_mode === 'perday') ? 1 : 0;
     if (hasExplicitPerday) {
       const parsedGrowth = Number(sub.perday ?? sub.daily_increase);
-      if (Number.isNaN(parsedGrowth) || parsedGrowth < 0) {
+      if (!Number.isFinite(parsedGrowth) || parsedGrowth < 0) {
         return { success: false, error: `The ${entryLabel} "${trimmedName}" has an invalid perday value. Must be a non-negative number.` };
       }
       daily_increase = parsedGrowth;
@@ -148,7 +153,7 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     if (sub.backlog !== undefined) {
       hasBacklogField = true;
       const parsedBacklog = Number(sub.backlog);
-      if (Number.isNaN(parsedBacklog) || parsedBacklog < 0) {
+      if (!Number.isFinite(parsedBacklog) || parsedBacklog < 0) {
         return { success: false, error: `The ${entryLabel} "${trimmedName}" has an invalid backlog value. Must be a non-negative number.` };
       }
       backlog = parsedBacklog;
@@ -185,9 +190,14 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     ? parsed.course_name.trim()
     : (typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : 'Imported Course');
 
-  const classesPerDay = parsed.classes_per_day !== undefined
-    ? Math.max(1, Number(parsed.classes_per_day) || 4)
-    : 4;
+  let classesPerDay = 4;
+  if (parsed.classes_per_day !== undefined) {
+    const parsedClassesPerDay = Number(parsed.classes_per_day);
+    if (!Number.isFinite(parsedClassesPerDay) || parsedClassesPerDay < 1) {
+      return { success: false, error: 'classes_per_day must be a finite number of at least 1.' };
+    }
+    classesPerDay = Math.floor(parsedClassesPerDay);
+  }
 
   const skipSunday = parsed.skip_sunday !== undefined
     ? Boolean(parsed.skip_sunday)
@@ -197,21 +207,61 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     ? parsed.theme
     : 'dark';
 
-  const palette_color = typeof parsed.palette_color === 'string' && parsed.palette_color.startsWith('#')
-    ? parsed.palette_color
-    : undefined;
+  if (parsed.palette_color !== undefined && (typeof parsed.palette_color !== 'string' || !HEX_COLOR.test(parsed.palette_color))) {
+    return { success: false, error: 'palette_color must be a six-digit hex color such as #6750a4.' };
+  }
+  const palette_color = parsed.palette_color as string | undefined;
+
+  const lastUpdated = typeof parsed.last_updated === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.last_updated)
+    ? parsed.last_updated
+    : getLocalDateString();
 
   const cleanData: AppData = {
     subjects: validatedSubjects,
     classes_per_day: classesPerDay,
     skip_sunday: skipSunday,
     course_name: courseName,
-    last_updated: typeof parsed.last_updated === 'string' ? parsed.last_updated : new Date().toISOString().split('T')[0],
+    last_updated: lastUpdated,
     setup_done: isFullBackup ? (parsed.setup_done !== undefined ? Boolean(parsed.setup_done) : true) : false,
     theme: theme,
     palette_color: palette_color,
     auto_growth_enabled: parsed.auto_growth_enabled !== undefined ? Boolean(parsed.auto_growth_enabled) : true,
   };
+
+  if (parsed.custom_presets !== undefined) {
+    if (!Array.isArray(parsed.custom_presets)) {
+      return { success: false, error: 'Invalid custom_presets. Expected an array.' };
+    }
+    const presetIds = new Set<string>();
+    const presets: CustomPreset[] = [];
+    for (const rawPreset of parsed.custom_presets) {
+      if (!rawPreset || typeof rawPreset !== 'object' || Array.isArray(rawPreset)) {
+        return { success: false, error: 'A custom preset is invalid.' };
+      }
+      const preset = rawPreset as Partial<CustomPreset>;
+      const id = typeof preset.id === 'string' ? preset.id.trim() : '';
+      const name = typeof preset.name === 'string' ? preset.name.trim() : '';
+      if (!id || !name || presetIds.has(id) || !Array.isArray(preset.entries)) {
+        return { success: false, error: 'A custom preset is missing a unique id, name, or entries list.' };
+      }
+      presetIds.add(id);
+      const entries = preset.entries.filter((entry): entry is Subject => {
+        return Boolean(entry) && typeof entry.name === 'string' && entry.name.trim().length > 0 &&
+          typeof entry.emoji === 'string' && typeof entry.color === 'string' && HEX_COLOR.test(entry.color) &&
+          Number.isFinite(entry.backlog) && entry.backlog >= 0 && Number.isFinite(entry.daily_increase) && entry.daily_increase >= 0;
+      }).map(entry => ({
+        ...entry,
+        name: entry.name.trim(),
+        emoji: entry.emoji.trim() || '📚',
+        repeat_days: entry.repeat_days?.filter(day => VALID_REPEAT_DAYS.has(day))
+      }));
+      if (entries.length !== preset.entries.length) {
+        return { success: false, error: `Custom preset "${name}" contains an invalid entry.` };
+      }
+      presets.push({ id, name, emoji: typeof preset.emoji === 'string' && preset.emoji.trim() ? preset.emoji.trim() : '✨', entries });
+    }
+    cleanData.custom_presets = presets;
+  }
 
   if (!isFullBackup) {
     Object.keys(cleanData.subjects).forEach(key => {

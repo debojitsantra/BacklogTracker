@@ -16,6 +16,13 @@ export interface Subject {
   completion_mode?: 'todo' | 'backlog';
 }
 
+export interface CustomPreset {
+  id: string;
+  name: string;
+  emoji: string;
+  entries: Subject[];
+}
+
 export interface AppData {
   subjects: Record<string, Subject>;
   classes_per_day: number;
@@ -26,4 +33,5 @@ export interface AppData {
   theme: 'dark' | 'light';
   palette_color?: string;
   auto_growth_enabled?: boolean;
+  custom_presets?: CustomPreset[];
 }

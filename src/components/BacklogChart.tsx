@@ -16,7 +16,7 @@ export default function BacklogChart({ subjects }: BacklogChartProps) {
 
   if (totalBacklog <= 0) {
     return (
-      <div className="bg-brand-container border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[24px] p-6 text-center">
+      <div className="bg-brand-container border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 text-center">
         <span className="text-sm font-bold text-[#006a6a] dark:text-[#86d6a5] tracking-wide block mb-1">
           ALL BACKLOGS CLEARED
         </span>
@@ -28,7 +28,7 @@ export default function BacklogChart({ subjects }: BacklogChartProps) {
   }
 
   return (
-    <div className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[24px] p-4 space-y-4">
+    <div className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[20px] sm:rounded-[24px] p-3 sm:p-4 space-y-4">
       <div>
         <h3 className="text-xs font-bold text-brand uppercase tracking-wider">
           Backlog Weight Distribution

@@ -18,7 +18,7 @@ export default function KPICard({ title, value, subtitle, icon, accentColor }: K
   return (
     <motion.div
       whileHover={{ y: -2 }}
-      className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[24px] p-4 flex flex-col justify-between shadow-sm relative overflow-hidden"
+      className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[20px] sm:rounded-[24px] p-3 sm:p-4 flex flex-col justify-between shadow-sm relative overflow-hidden"
     >
       {accentColor && (
         <div

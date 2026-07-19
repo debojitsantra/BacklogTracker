@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   Calendar,
   CalendarCheck,
@@ -18,14 +18,25 @@ import {
 } from 'lucide-react';
 import { AppData, Subject } from './types';
 import { MOTIVATIONAL_QUOTES, DEFAULT_DATA } from './data';
-import SetupWizard from './components/SetupWizard';
 import KPICard from './components/KPICard';
 import SubjectCard from './components/SubjectCard';
 import BacklogChart from './components/BacklogChart';
-import OfflineNotification from './components/OfflineNotification';
-import SettingsModal from './components/SettingsModal';
-import HelpModal from './components/HelpModal';
 import { getCalendarDaysDifference, getLocalDateString, parseLocalDate } from './utils/date';
+
+const SetupWizard = lazy(() => import('./components/SetupWizard'));
+const OfflineNotification = lazy(() => import('./components/OfflineNotification'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const HelpModal = lazy(() => import('./components/HelpModal'));
+
+function DeferredScreen({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>;
+}
+
+declare global {
+  interface Window {
+    AndroidBackHandler?: { exitApp: () => void };
+  }
+}
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const WEEK_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -99,9 +110,7 @@ export default function App() {
   });
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [helpModalOpen, setHelpModalOpen] = useState<boolean>(() => {
-    return localStorage.getItem('backlog_tracker_help_seen') !== 'true';
-  });
+  const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [showQuotes, setShowQuotes] = useState<boolean>(() => {
     const saved = localStorage.getItem('show_quotes');
     return saved !== 'false';
@@ -118,6 +127,12 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (wizardOpen || localStorage.getItem('backlog_tracker_help_seen') === 'true') return;
+    const timer = window.setTimeout(() => setHelpModalOpen(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [wizardOpen]);
+
+  useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
       document.body.classList.add('dark');
@@ -127,6 +142,16 @@ export default function App() {
     }
     localStorage.setItem('darkMode', String(darkMode));
   }, [darkMode]);
+
+  useEffect(() => {
+    const preventCopyOrCut = (event: ClipboardEvent) => event.preventDefault();
+    document.addEventListener('copy', preventCopyOrCut);
+    document.addEventListener('cut', preventCopyOrCut);
+    return () => {
+      document.removeEventListener('copy', preventCopyOrCut);
+      document.removeEventListener('cut', preventCopyOrCut);
+    };
+  }, []);
 
   useEffect(() => {
     const color = data.palette_color || '#6750a4';
@@ -154,6 +179,50 @@ export default function App() {
   } | null>(null);
 
   const [simulatedDaysShift, setSimulatedDaysShift] = useState(0);
+  const lastBackPressRef = useRef(0);
+  const [showExitHint, setShowExitHint] = useState(false);
+
+  const requestAppExit = useCallback(() => {
+    const now = Date.now();
+    if (now - lastBackPressRef.current < 2000) {
+      window.AndroidBackHandler?.exitApp();
+      return;
+    }
+    lastBackPressRef.current = now;
+    setShowExitHint(true);
+    window.setTimeout(() => setShowExitHint(false), 2000);
+  }, []);
+
+  useEffect(() => {
+    const handleBackButton = (event: Event) => {
+      if (helpModalOpen) {
+        event.stopImmediatePropagation();
+        closeHelpModal();
+        return;
+      }
+      if (settingsModalOpen) {
+        event.stopImmediatePropagation();
+        setSettingsModalOpen(false);
+        return;
+      }
+      if (offlineSyncReport) {
+        event.stopImmediatePropagation();
+        setOfflineSyncReport(null);
+        return;
+      }
+      if (!wizardOpen) {
+        event.stopImmediatePropagation();
+        requestAppExit();
+      }
+    };
+    const handleExitRequest = () => requestAppExit();
+    window.addEventListener('android-back-button', handleBackButton, true);
+    window.addEventListener('app-request-exit', handleExitRequest);
+    return () => {
+      window.removeEventListener('android-back-button', handleBackButton, true);
+      window.removeEventListener('app-request-exit', handleExitRequest);
+    };
+  }, [helpModalOpen, offlineSyncReport, requestAppExit, settingsModalOpen, wizardOpen]);
 
   const runDailyBacklogGrowth = useCallback(() => {
     if (!data.setup_done || !data.subjects || Object.keys(data.subjects).length === 0) return;
@@ -245,6 +314,9 @@ export default function App() {
   const handleSaveData = (newData: AppData) => {
     setData(newData);
     localStorage.setItem('backlog_tracker_data', JSON.stringify(newData));
+    if (newData.custom_presets) {
+      localStorage.setItem('backlog_tracker_custom_presets', JSON.stringify(newData.custom_presets));
+    }
     setWizardOpen(false);
   };
 
@@ -349,6 +421,7 @@ export default function App() {
   const calculateClearanceETA = (): {
     calendarDays: number;
     targetDateString: string | null;
+    isCapped: boolean;
   } => {
     const subjects = getSubjectsList();
     const pendingTodos = subjects.filter(s => s.completion_mode === 'todo' && s.backlog > 0).length;
@@ -357,7 +430,7 @@ export default function App() {
       .reduce((sum, s) => sum + s.backlog, 0);
 
     if (pendingTodos + backlogTotal <= 0) {
-      return { calendarDays: 0, targetDateString: 'Track Cleared' };
+      return { calendarDays: 0, targetDateString: 'Track Cleared', isCapped: false };
     }
 
     const cpd = data.classes_per_day || 4;
@@ -376,7 +449,15 @@ export default function App() {
     }
 
     if (currentTodos > 0 || currentBacklog > 0) {
-      return { calendarDays: Infinity, targetDateString: null };
+      const weeklyGrowth = Array.from({ length: 7 }, (_, index) => {
+        const day = new Date(startDate);
+        day.setDate(startDate.getDate() + index + 1);
+        return calculateGrowthForDate(day);
+      }).reduce((sum, growth) => sum + growth, 0);
+      if (weeklyGrowth >= cpd * 7) {
+        return { calendarDays: Infinity, targetDateString: null, isCapped: false };
+      }
+      return { calendarDays: 10000, targetDateString: null, isCapped: true };
     }
 
     const etaDate = new Date();
@@ -384,7 +465,7 @@ export default function App() {
     const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
     const dateFormatted = etaDate.toLocaleDateString('en-US', options);
 
-    return { calendarDays, targetDateString: dateFormatted };
+    return { calendarDays, targetDateString: dateFormatted, isCapped: false };
   };
 
   const getMaxSubjectBacklog = (): number => {
@@ -452,7 +533,7 @@ export default function App() {
 
     for (let d = 1; d <= days; d++) {
       const simulatedDay = new Date(initialDateObj);
-      simulatedDay.setDate(initialDateObj.getDate() + d);
+      simulatedDay.setDate(initialDateObj.getDate() + simulatedDaysShift + d);
       const isSundayObj = simulatedDay.getDay() === 0;
 
       Object.keys(currentSubjects).forEach(subName => {
@@ -479,7 +560,7 @@ export default function App() {
   const allTodo = isAllTodoMode();
   const pendingTodoCount = countPendingTodos();
 
-  const { calendarDays, targetDateString } = calculateClearanceETA();
+  const { calendarDays, targetDateString, isCapped: isEtaCapped } = calculateClearanceETA();
   const totalBacklog = calculateTotalBacklog();
   const growthKpi = getGrowthKpi();
 
@@ -494,7 +575,7 @@ export default function App() {
         message: 'Everything tracked here is clear. Your current queue is under control.'
       };
     }
-    if (calendarDays === Infinity && autoGrowthEnabled) {
+    if (calendarDays === Infinity && autoGrowthEnabled && !isEtaCapped) {
       return {
         label: 'ALERT: Snowballing Workload',
         color: '#ba1a1a', 
@@ -529,8 +610,7 @@ export default function App() {
   if (wizardOpen) {
     return (
       <>
-        <HelpModal isOpen={helpModalOpen} onClose={closeHelpModal} />
-        <SetupWizard
+        <DeferredScreen><SetupWizard
           initialData={data}
           onSave={handleSaveData}
           onCancel={data.setup_done ? () => {
@@ -563,28 +643,34 @@ export default function App() {
             });
             setWizardOpen(true);
           }}
-        />
+        /></DeferredScreen>
       </>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#fef7ff] text-[#1d1b20] dark:bg-[#111318] dark:text-[#e6e1e5] flex flex-col font-sans selection:bg-[#cac4d0] dark:selection:bg-[#49454f] selection:text-[#1d192b] dark:selection:text-[#fef7ff]">
-      <HelpModal isOpen={helpModalOpen} onClose={closeHelpModal} />
+      {helpModalOpen && <DeferredScreen><HelpModal isOpen={helpModalOpen} onClose={closeHelpModal} /></DeferredScreen>}
+
+      {showExitHint && (
+        <div className="fixed z-[80] bottom-5 left-1/2 -translate-x-1/2 bg-[#1d1b20] dark:bg-white text-white dark:text-[#111318] px-4 py-2.5 rounded-full text-xs font-bold shadow-xl">
+          Press back again to exit
+        </div>
+      )}
 
       {offlineSyncReport && (
-        <OfflineNotification
+        <DeferredScreen><OfflineNotification
           daysElapsed={offlineSyncReport.daysElapsed}
           totalBacklogAdded={offlineSyncReport.totalAdded}
           lastUpdatedDate={offlineSyncReport.lastUpdatedDate}
           onClose={() => setOfflineSyncReport(null)}
-        />
+        /></DeferredScreen>
       )}
 
-      <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#1a1c22]/90 backdrop-blur-md border-b border-[#cac4d0]/30 dark:border-[#24262f]/60 px-4 py-3">
+      <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#1a1c22]/90 backdrop-blur-md border-b border-[#cac4d0]/30 dark:border-[#24262f]/60 px-3 sm:px-4 py-2.5 sm:py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="min-w-0">
-            <h1 className="text-base font-bold text-[#1d1b20] dark:text-white tracking-tight truncate max-w-[220px] sm:max-w-[420px]">
+            <h1 className="text-sm sm:text-base font-bold text-[#1d1b20] dark:text-white tracking-tight truncate max-w-[180px] sm:max-w-[420px]">
               {data.course_name}
             </h1>
           </div>
@@ -593,9 +679,9 @@ export default function App() {
             <button
               onClick={() => setWizardOpen(true)}
               type="button"
-              className="p-2 sm:px-3 sm:py-1.5 rounded-full bg-brand text-white dark:text-[#111318] text-xs font-bold flex items-center gap-1 hover:opacity-90 transition-all focus:outline-none shadow-sm"
-              style={{ minHeight: '36px' }}
+              className="w-9 h-9 p-0 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-full bg-brand text-white dark:text-[#111318] text-xs font-bold flex items-center justify-center gap-1 hover:opacity-90 transition-all focus:outline-none shadow-sm"
               title="Open Configuration / Setup"
+              data-tour="configure"
             >
               <SlidersHorizontal className="w-4 h-4" />
               <span className="hidden sm:inline">Configure</span>
@@ -603,9 +689,9 @@ export default function App() {
             <button
               onClick={() => setSettingsModalOpen(true)}
               type="button"
-              className="p-2 sm:px-3 sm:py-1.5 rounded-full bg-brand-container hover:bg-brand-container-hover text-xs font-bold flex items-center gap-1 text-brand border border-[#cac4d0]/25 dark:border-brand-container transition-all focus:outline-none"
-              style={{ minHeight: '36px' }}
+              className="w-9 h-9 p-0 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-full bg-brand-container hover:bg-brand-container-hover text-xs font-bold flex items-center justify-center gap-1 text-brand border border-[#cac4d0]/25 dark:border-brand-container transition-all focus:outline-none"
               title="Open Settings and Backup Dashboard"
+              data-tour="settings"
             >
               <Settings className="w-4 h-4 text-brand" />
               <span className="hidden sm:inline">Settings</span>
@@ -614,10 +700,10 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6 space-y-6">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
 
         {showQuotes && (
-          <section className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[24px] p-4 relative overflow-hidden shadow-sm" id="quote-board">
+          <section className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[20px] sm:rounded-[24px] p-3 sm:p-4 relative overflow-hidden shadow-sm" id="quote-board">
             <div className="absolute right-3 top-3">
               <button
                 onClick={rotateQuote}
@@ -659,8 +745,8 @@ export default function App() {
           )}
           <KPICard
             title="CLEARANCE TIME"
-            value={calendarDays === Infinity ? 'Never' : `${calendarDays} Days`}
-            subtitle={calendarDays === Infinity ? 'Critical Load error' : 'Estimated catchup timeline'}
+            value={isEtaCapped ? '10k+ Days' : calendarDays === Infinity ? 'Never' : `${calendarDays} Days`}
+            subtitle={isEtaCapped ? 'Estimate exceeds 10,000 days' : calendarDays === Infinity ? 'Growth exceeds target' : 'Estimated catchup timeline'}
             icon={<Target className="w-4 h-4 text-[#006a6a]" />}
             accentColor={calendarDays === Infinity ? '#ba1a1a' : '#006a6a'}
           />
@@ -668,14 +754,18 @@ export default function App() {
             <KPICard
               title="BACKLOG FINISH DATE"
               value={
-                calendarDays === Infinity
+                isEtaCapped
+                  ? '10k+ Days'
+                  : calendarDays === Infinity
                   ? 'Never'
                   : targetDateString
                     ? targetDateString.split(',').slice(1).join(',').trim()
                     : '—'
               }
               subtitle={
-                calendarDays === Infinity
+                isEtaCapped
+                  ? 'Estimate limit reached'
+                  : calendarDays === Infinity
                   ? 'Growth exceeds budget'
                   : targetDateString
                     ? `In ${calendarDays} day${calendarDays === 1 ? '' : 's'}`
@@ -692,7 +782,7 @@ export default function App() {
             borderColor: (darkMode ? threat.colorDark : threat.color) + '40',
             backgroundColor: darkMode ? threat.darkBgColor : threat.bgColor
           }}
-          className="border rounded-[24px] p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-[#1d1b20] dark:text-white shadow-sm transition-all"
+          className="border rounded-[20px] sm:rounded-[24px] p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-[#1d1b20] dark:text-white shadow-sm transition-all"
         >
           <div className="flex items-start gap-3">
             <div
@@ -717,7 +807,7 @@ export default function App() {
         </section>
 
         {!allTodo && (
-          <section className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[24px] p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
+          <section data-tour="daily-target" className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[20px] sm:rounded-[24px] p-3 sm:p-4 flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-4 shadow-sm">
             <div className="flex items-center gap-3 w-full md:w-auto">
               <div className="p-2 bg-brand-container rounded-xl text-brand">
                 <Target className="w-5 h-5" />
@@ -732,31 +822,33 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-              <button
-                onClick={() => handleGlobalCpdChange(data.classes_per_day - 1)}
-                type="button"
-                className="w-10 h-10 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-transparent dark:border-brand-container/60 font-bold flex items-center justify-center transition-all"
-                style={{ minWidth: '40px', minHeight: '40px' }}
-              >
-                <Minus className="w-4 h-4" />
-              </button>
-              <input
-                type="number"
-                min="1"
-                value={data.classes_per_day}
-                onChange={e => handleGlobalCpdChange(parseInt(e.target.value) || 1)}
-                className="bg-brand-container text-center font-mono font-bold text-lg w-16 py-1.5 rounded-xl text-brand border border-[#cac4d0]/30 dark:border-brand-container focus:outline-none"
-              />
-              <button
-                onClick={() => handleGlobalCpdChange(data.classes_per_day + 1)}
-                type="button"
-                className="w-10 h-10 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-transparent dark:border-brand-container/60 font-bold flex items-center justify-center transition-all"
-                style={{ minWidth: '40px', minHeight: '40px' }}
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-              <span className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold font-mono pl-1">items/day</span>
+            <div className="relative flex w-full md:w-[280px] items-center justify-center">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleGlobalCpdChange(data.classes_per_day - 1)}
+                  type="button"
+                  className="w-10 h-10 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-transparent dark:border-brand-container/60 font-bold flex items-center justify-center transition-all"
+                  style={{ minWidth: '40px', minHeight: '40px' }}
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <input
+                  type="number"
+                  min="1"
+                  value={data.classes_per_day}
+                  onChange={e => handleGlobalCpdChange(parseInt(e.target.value) || 1)}
+                  className="bg-brand-container text-center font-mono font-bold text-lg w-16 py-1.5 rounded-xl text-brand border border-[#cac4d0]/30 dark:border-brand-container focus:outline-none"
+                />
+                <button
+                  onClick={() => handleGlobalCpdChange(data.classes_per_day + 1)}
+                  type="button"
+                  className="w-10 h-10 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-transparent dark:border-brand-container/60 font-bold flex items-center justify-center transition-all"
+                  style={{ minWidth: '40px', minHeight: '40px' }}
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <span className="absolute right-0 text-xs text-[#49454f] dark:text-[#cac4d0] font-bold font-mono">items/day</span>
             </div>
           </section>
         )}
@@ -767,12 +859,12 @@ export default function App() {
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between px-1">
+          <div className="flex items-start sm:items-center justify-between gap-3 px-1">
             <h3 className="text-xs font-extrabold text-brand uppercase tracking-widest flex items-center gap-1">
               <Calendar className="w-4 h-4 text-brand" />
               ACTIVE BACKLOG ENTRIES
             </h3>
-            <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0] font-bold italic">
+            <span className="text-[10px] text-right text-[#49454f] dark:text-[#cac4d0] font-bold italic leading-tight">
               Tap buttons to add or complete units
             </span>
           </div>
@@ -792,7 +884,7 @@ export default function App() {
         </section>
 
         {anySchedule && autoGrowthEnabled && (
-          <section className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[24px] p-4 space-y-3 shadow-sm">
+          <section className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[20px] sm:rounded-[24px] p-3 sm:p-4 space-y-3 shadow-sm">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-brand" />
               <h4 className="text-xs font-bold text-[#1d1b20] dark:text-white uppercase tracking-wider">
@@ -856,7 +948,7 @@ export default function App() {
       </footer>
 
       {settingsModalOpen && (
-        <SettingsModal
+        <DeferredScreen><SettingsModal
           isOpen={settingsModalOpen}
           onClose={() => setSettingsModalOpen(false)}
           data={data}
@@ -892,8 +984,11 @@ export default function App() {
             setSettingsModalOpen(false);
             setWizardOpen(true);
           }}
-          onOpenHelp={() => setHelpModalOpen(true)}
-        />
+          onOpenHelp={() => {
+            setSettingsModalOpen(false);
+            setHelpModalOpen(true);
+          }}
+        /></DeferredScreen>
       )}
     </div>
   );

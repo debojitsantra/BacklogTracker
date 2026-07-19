@@ -66,7 +66,10 @@ export const PRESET_SUBJECTS: Record<string, { emoji: string; color: string }> =
 export const PALETTE = [
   "#FF8A65", "#4fc3f7", "#ba68c8", "#81c784", "#ffd54f",
   "#ffb74d", "#4dd0e1", "#f06292", "#4db6ac", "#e57373",
-  "#64b5f6", "#a1887f", "#9575cd", "#90a4ae", "#d4e157"
+  "#64b5f6", "#a1887f", "#9575cd", "#90a4ae", "#d4e157",
+  "#ef5350", "#ec407a", "#ab47bc", "#7e57c2", "#5c6bc0",
+  "#42a5f5", "#26a69a", "#66bb6a", "#9ccc65", "#c0ca33",
+  "#fdd835", "#ffa726", "#8d6e63", "#78909c", "#546e7a"
 ];
 
 export const DEFAULT_DATA = {

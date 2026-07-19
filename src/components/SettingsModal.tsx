@@ -14,10 +14,10 @@ import {
   Database,
   Download,
   Upload,
-  Copy,
   Check,
   Palette,
   AlertCircle,
+  AlertTriangle,
   Eye,
   EyeOff,
   CalendarDays,
@@ -50,7 +50,8 @@ const COLOR_PRESETS = [
   { name: 'Teal Forest', hex: '#006a6a' },
   { name: 'Crimson Fire', hex: '#ba1a1a' },
   { name: 'Ocean Blue', hex: '#0277bd' },
-  { name: 'Sunset Orange', hex: '#d84315' }
+  { name: 'Sunset Orange', hex: '#d84315' },
+  { name: 'Emerald Green', hex: '#2e7d32' }
 ];
 
 // Register the custom native Download plugin
@@ -78,7 +79,6 @@ export default function SettingsModal({
 
   const [selectedColor, setSelectedColor] = useState(data.palette_color || '#6750a4');
 
-  const [copiedType, setCopiedType] = useState<'course' | 'backup' | null>(null);
   const [importText, setImportText] = useState('');
   const [validationMessage, setValidationMessage] = useState<{
     success: boolean;
@@ -86,6 +86,7 @@ export default function SettingsModal({
     type?: 'course_design' | 'full_backup';
     parsedData?: AppData;
   } | null>(null);
+  const [pendingFullBackup, setPendingFullBackup] = useState<AppData | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -196,52 +197,6 @@ export default function SettingsModal({
     downloadJSON(exportObj, `backlog-tracker-backup-${new Date().toISOString().split('T')[0]}.json`);
   };
 
-  const handleCopyJson = (type: 'course' | 'backup') => {
-    let objToCopy: object;
-    if (type === 'course') {
-      const cleanItems: Record<string, any> = {};
-      Object.entries(data.subjects || {}).forEach(([name, sub]) => {
-        const mode = sub.growth_mode || (sub.repeat_days?.length ? 'repeat' : sub.daily_increase > 0 ? 'perday' : 'none');
-        cleanItems[name] = {
-          emoji: sub.emoji,
-          color: sub.color,
-          growth_mode: mode
-        };
-        if (sub.completion_mode) {
-          cleanItems[name].completion_mode = sub.completion_mode;
-        }
-        if (sub.daily_increase > 0) {
-          cleanItems[name].perday = sub.daily_increase;
-        }
-        if (mode === 'repeat' && sub.repeat_days?.length) {
-          cleanItems[name].repeat_days = sub.repeat_days;
-        }
-      });
-
-      objToCopy = {
-        schemaVersion: 1,
-        exportType: 'course_design',
-        title: data.course_name,
-        description: 'Shared Backlog Tracker template',
-        items: cleanItems,
-        theme: data.theme,
-        palette_color: data.palette_color
-      };
-    } else {
-      objToCopy = {
-        ...data,
-        schemaVersion: 1,
-        exportType: 'full_backup'
-      };
-    }
-
-    navigator.clipboard.writeText(JSON.stringify(objToCopy, null, 2))
-      .then(() => {
-        setCopiedType(type);
-        setTimeout(() => setCopiedType(null), 2000);
-      });
-  };
-
   const handleTextImportValidation = () => {
     const result = validateAndParseImport(importText);
     if (result.success && result.data && result.type) {
@@ -300,24 +255,28 @@ export default function SettingsModal({
       onImportCourseDesign(parsedData);
       onClose();
     } else {
-      if (confirm('Importing this Full Backup will overwrite all your current statistics, subjects, and backlog values. Do you want to proceed?')) {
-        onImportFullBackup(parsedData);
-        onClose();
-      }
+      setPendingFullBackup(parsedData);
     }
+  };
+
+  const confirmFullBackupImport = () => {
+    if (!pendingFullBackup) return;
+    onImportFullBackup(pendingFullBackup);
+    setPendingFullBackup(null);
+    onClose();
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1d1b20]/60 dark:bg-black/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[#1d1b20]/60 dark:bg-black/80 backdrop-blur-sm">
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="w-full max-w-lg bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[28px] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-[#1d1b20] dark:text-white"
+        className="w-full max-w-lg bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-t-[24px] sm:rounded-[28px] shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[90vh] overflow-hidden text-[#1d1b20] dark:text-white"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#cac4d0]/20 dark:border-[#24262f]/60">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#cac4d0]/20 dark:border-[#24262f]/60">
           <div className="flex items-center gap-2">
             <Sliders className="w-5 h-5 text-brand" />
             <h2 className="text-lg font-bold font-sans">Application Settings</h2>
@@ -330,7 +289,7 @@ export default function SettingsModal({
           </button>
         </div>
 
-        <div className="flex bg-[#f3edf7] dark:bg-[#24262f] p-1 mx-6 mt-4 rounded-xl">
+        <div className="flex bg-[#f3edf7] dark:bg-[#24262f] p-1 mx-4 sm:mx-6 mt-3 sm:mt-4 rounded-xl">
           <button
             onClick={() => setActiveTab('customization')}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${activeTab === 'customization'
@@ -396,7 +355,7 @@ export default function SettingsModal({
                   <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">App Color Customization</label>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {COLOR_PRESETS.map((color) => {
                     const isSelected = selectedColor.toLowerCase() === color.hex.toLowerCase();
                     return (
@@ -415,24 +374,6 @@ export default function SettingsModal({
                   })}
                 </div>
 
-                <div className="flex items-center gap-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 p-3 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
-                  <span className="text-xs font-semibold flex-1">Or select custom HEX accent color:</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={selectedColor}
-                      onChange={(e) => handleColorChange(e.target.value)}
-                      placeholder="#6750a4"
-                      className="w-20 px-2 py-1 bg-white dark:bg-[#1a1c22] text-xs font-mono rounded-lg border border-[#cac4d0]/40 dark:border-[#24262f] text-center focus:outline-none focus:border-brand"
-                    />
-                    <input
-                      type="color"
-                      value={selectedColor.startsWith('#') && selectedColor.length === 7 ? selectedColor : '#6750a4'}
-                      onChange={(e) => handleColorChange(e.target.value)}
-                      className="w-8 h-8 rounded-lg cursor-pointer border-0 p-0 overflow-hidden bg-transparent"
-                    />
-                  </div>
-                </div>
               </div>
 
               <div className="space-y-2">
@@ -562,20 +503,13 @@ export default function SettingsModal({
                         Entry names, colors, emojis, optional per-day rules, and repeat days. <strong>No personal backlog counts</strong> included.
                       </p>
                     </div>
-                    <div className="flex gap-2 pt-1">
+                    <div className="pt-1">
                       <button
                         onClick={handleExportCourseDesign}
-                        className="flex-1 bg-brand hover:bg-brand-container-hover hover:text-brand text-white text-[10px] font-bold py-2 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-all border border-transparent hover:border-brand/20"
+                        className="w-full bg-brand hover:bg-brand-container-hover hover:text-brand text-white text-[10px] font-bold py-2 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-all border border-transparent hover:border-brand/20"
                       >
                         <Download className="w-3 h-3" />
                         Download
-                      </button>
-                      <button
-                        onClick={() => handleCopyJson('course')}
-                        className="p-2 bg-[#f3edf7] dark:bg-[#24262f] text-brand border border-[#cac4d0]/30 dark:border-[#24262f] hover:bg-[#e8def8] rounded-xl flex items-center justify-center cursor-pointer transition-colors"
-                        title="Copy to Clipboard"
-                      >
-                        {copiedType === 'course' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </div>
@@ -587,20 +521,13 @@ export default function SettingsModal({
                         Complete data snapshot including entries, <strong>active backlog sizes</strong>, configurations, and last sync timestamps.
                       </p>
                     </div>
-                    <div className="flex gap-2 pt-1">
+                    <div className="pt-1">
                       <button
                         onClick={handleExportFullBackup}
-                        className="flex-1 bg-brand hover:bg-brand-container-hover hover:text-brand text-white text-[10px] font-bold py-2 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-all border border-transparent hover:border-brand/20"
+                        className="w-full bg-brand hover:bg-brand-container-hover hover:text-brand text-white text-[10px] font-bold py-2 rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-all border border-transparent hover:border-brand/20"
                       >
                         <Download className="w-3 h-3" />
                         Download
-                      </button>
-                      <button
-                        onClick={() => handleCopyJson('backup')}
-                        className="p-2 bg-[#f3edf7] dark:bg-[#24262f] text-brand border border-[#cac4d0]/30 dark:border-[#24262f] hover:bg-[#e8def8] rounded-xl flex items-center justify-center cursor-pointer transition-colors"
-                        title="Copy to Clipboard"
-                      >
-                        {copiedType === 'backup' ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </div>
@@ -729,7 +656,7 @@ export default function SettingsModal({
           )}
         </div>
 
-        <div className="bg-[#f7f2fa] dark:bg-[#15131b] border-t border-[#cac4d0]/20 dark:border-[#24262f]/60 py-3.5 px-6 flex justify-end">
+        <div className="bg-[#f7f2fa] dark:bg-[#15131b] border-t border-[#cac4d0]/20 dark:border-[#24262f]/60 py-3.5 px-4 sm:px-6 flex justify-end">
           <button
             onClick={onClose}
             className="px-5 py-2 bg-brand text-white dark:text-[#111318] hover:opacity-90 text-xs font-bold rounded-full transition-all cursor-pointer"
@@ -739,6 +666,38 @@ export default function SettingsModal({
         </div>
       </motion.div>
 
+      <AnimatePresence>
+        {pendingFullBackup && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-[#1d1b20]/65 dark:bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              className="w-full max-w-sm overflow-hidden rounded-[24px] bg-white dark:bg-[#1a1c22] border border-red-500/30 dark:border-red-400/30 shadow-2xl"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="settings-backup-warning-title"
+            >
+              <div className="p-5 sm:p-6">
+                <div className="w-11 h-11 rounded-2xl bg-red-500/12 dark:bg-red-400/15 text-red-600 dark:text-red-400 flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <h3 id="settings-backup-warning-title" className="mt-4 text-base font-bold">Replace current tracker?</h3>
+                <p className="mt-2 text-xs leading-relaxed text-[#49454f] dark:text-[#cac4d0]">
+                  This backup will replace your tracker name, items, progress, schedules, and saved presets. This cannot be undone from the app.
+                </p>
+                <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/7 dark:bg-red-400/10 px-3 py-2.5 text-[11px] font-semibold text-red-700 dark:text-red-300">
+                  Backup: {pendingFullBackup.course_name || 'Untitled tracker'} · {Object.keys(pendingFullBackup.subjects || {}).length} items
+                </div>
+              </div>
+              <div className="flex gap-2 border-t border-[#cac4d0]/25 dark:border-[#24262f]/70 p-4 bg-[#f8f5fa] dark:bg-[#15171d]">
+                <button type="button" onClick={() => setPendingFullBackup(null)} className="flex-1 min-h-11 rounded-full bg-white dark:bg-[#24262f] border border-[#cac4d0]/35 dark:border-[#454854] text-[#49454f] dark:text-[#e5e1e8] text-xs font-bold">Keep Current</button>
+                <button type="button" onClick={confirmFullBackupImport} className="flex-1 min-h-11 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm">Replace &amp; Import</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
