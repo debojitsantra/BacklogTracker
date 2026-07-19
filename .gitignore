@@ -13,3 +13,5 @@ android/app/build/
 *.iml
 .vscode/
 .gradle/
+.npm/
+.config/
