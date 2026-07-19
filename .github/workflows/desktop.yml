@@ -169,14 +169,27 @@ jobs:
           pattern: BacklogTracker-*
           merge-multiple: true
 
+      - name: Extract desktop release packages
+        shell: bash
+        run: |
+          mkdir -p release-packages
+          find release-artifacts -type f \( \
+            -name "*.msi" -o \
+            -name "*.deb" -o \
+            -name "*.AppImage" -o \
+            -name "*.dmg" \
+          \) -exec cp {} release-packages/ \;
+
+          test -n "$(find release-packages -maxdepth 1 -type f -print -quit)"
+
       - name: Upload packages to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-artifacts/**/*.msi
-            release-artifacts/**/*.deb
-            release-artifacts/**/*.AppImage
-            release-artifacts/**/*.dmg
+            release-packages/*.msi
+            release-packages/*.deb
+            release-packages/*.AppImage
+            release-packages/*.dmg
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
