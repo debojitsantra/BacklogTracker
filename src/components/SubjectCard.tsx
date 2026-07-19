@@ -50,7 +50,7 @@ export default function SubjectCard({
   return (
     <motion.div
       layout
-      className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 hover:border-brand/30 rounded-[24px] p-4 flex flex-col justify-between shadow-sm relative overflow-hidden"
+      className="bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 hover:border-brand/30 rounded-[20px] sm:rounded-[24px] p-3 sm:p-4 flex flex-col justify-between shadow-sm relative overflow-hidden"
     >
       <div
         className="absolute top-0 bottom-0 left-0 w-2"
@@ -144,7 +144,7 @@ export default function SubjectCard({
         </div>
       )}
 
-      <div className="pl-3 mt-4 flex gap-2">
+      <div data-tour="item-actions" className="pl-3 mt-3 sm:mt-4 flex gap-2">
         {isTodo ? (
           <button
             type="button"
@@ -173,7 +173,7 @@ export default function SubjectCard({
             <button
               type="button"
               onClick={() => onModifyBacklog(1)}
-              className="flex-1 bg-brand-container hover:bg-brand-container-hover text-xs font-semibold py-2.5 px-3 rounded-full flex items-center justify-center gap-1.5 text-brand transition-all select-none border border-[#cac4d0]/20 dark:border-transparent cursor-pointer"
+              className="flex-1 bg-brand-container hover:bg-brand-container-hover text-xs font-semibold py-3 sm:py-2.5 px-2 sm:px-3 rounded-full flex items-center justify-center gap-1 text-brand transition-all select-none border border-[#cac4d0]/20 dark:border-transparent cursor-pointer"
               style={{ minHeight: '40px' }}
             >
               <Plus className="w-3.5 h-3.5 flex-shrink-0 text-[#ba1a1a] dark:text-red-400" />
@@ -183,7 +183,7 @@ export default function SubjectCard({
             <button
               type="button"
               onClick={() => onModifyBacklog(-1)}
-              className="flex-1 text-xs font-bold py-2.5 px-3 rounded-full flex items-center justify-center gap-1.5 transition-all select-none shadow-sm hover:opacity-90 border border-transparent"
+              className="flex-1 text-xs font-bold py-3 sm:py-2.5 px-2 sm:px-3 rounded-full flex items-center justify-center gap-1 transition-all select-none shadow-sm hover:opacity-90 border border-transparent"
               style={{
                 backgroundColor: color,
                 color: isLight ? '#1d192b' : '#ffffff',

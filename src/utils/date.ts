@@ -24,7 +24,9 @@ export function getCalendarDaysDifference(startDateString: string, endDateString
     return 0;
   }
 
-  const diffTime = end.getTime() - start.getTime();
-
-  return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+  // Use calendar dates rather than local midnight timestamps. The latter are 23 or
+  // 25 hours apart around daylight-saving transitions.
+  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.max(0, Math.round((endUtc - startUtc) / (1000 * 60 * 60 * 24)));
 }

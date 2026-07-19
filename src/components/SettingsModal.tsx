@@ -310,14 +310,14 @@ export default function SettingsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1d1b20]/60 dark:bg-black/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[#1d1b20]/60 dark:bg-black/80 backdrop-blur-sm">
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="w-full max-w-lg bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[28px] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-[#1d1b20] dark:text-white"
+        className="w-full max-w-lg bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-t-[24px] sm:rounded-[28px] shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[90vh] overflow-hidden text-[#1d1b20] dark:text-white"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#cac4d0]/20 dark:border-[#24262f]/60">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#cac4d0]/20 dark:border-[#24262f]/60">
           <div className="flex items-center gap-2">
             <Sliders className="w-5 h-5 text-brand" />
             <h2 className="text-lg font-bold font-sans">Application Settings</h2>
@@ -330,7 +330,7 @@ export default function SettingsModal({
           </button>
         </div>
 
-        <div className="flex bg-[#f3edf7] dark:bg-[#24262f] p-1 mx-6 mt-4 rounded-xl">
+        <div className="flex bg-[#f3edf7] dark:bg-[#24262f] p-1 mx-4 sm:mx-6 mt-3 sm:mt-4 rounded-xl">
           <button
             onClick={() => setActiveTab('customization')}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${activeTab === 'customization'
@@ -729,7 +729,7 @@ export default function SettingsModal({
           )}
         </div>
 
-        <div className="bg-[#f7f2fa] dark:bg-[#15131b] border-t border-[#cac4d0]/20 dark:border-[#24262f]/60 py-3.5 px-6 flex justify-end">
+        <div className="bg-[#f7f2fa] dark:bg-[#15131b] border-t border-[#cac4d0]/20 dark:border-[#24262f]/60 py-3.5 px-4 sm:px-6 flex justify-end">
           <button
             onClick={onClose}
             className="px-5 py-2 bg-brand text-white dark:text-[#111318] hover:opacity-90 text-xs font-bold rounded-full transition-all cursor-pointer"

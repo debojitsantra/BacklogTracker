@@ -27,4 +27,86 @@
   --brand-text: #a8c7fa;
 }
 
+/* Keep cards, dialogs, and form groups distinct from their surfaces in both themes. */
+[class*="border-[#cac4d0]/30"] {
+  border-color: rgb(202 196 208 / 0.6) !important;
+}
 
+.dark [class*="dark:border-[#24262f]"] {
+  border-color: #454854 !important;
+}
+
+.app-tour-active {
+  position: relative;
+  z-index: 71 !important;
+  outline: 3px solid var(--brand) !important;
+  outline-offset: 4px;
+  border-radius: 16px;
+  box-shadow: 0 0 0 8px rgb(103 80 164 / 0.18), 0 10px 28px rgb(0 0 0 / 0.2) !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+button, input, select, textarea {
+  touch-action: manipulation;
+}
+
+.app-startup-splash {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #fef7ff;
+  color: #6750a4;
+  animation: startup-splash-exit 280ms ease-out 420ms forwards;
+}
+
+.dark .app-startup-splash {
+  background: #111318;
+  color: #f5c518;
+}
+
+.app-startup-splash-logo {
+  width: min(34vw, 156px);
+  height: min(34vw, 156px);
+  filter: drop-shadow(0 12px 22px rgb(0 0 0 / 0.34));
+  animation: startup-logo-pulse 850ms ease-in-out infinite;
+}
+
+.app-startup-splash-name {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+@keyframes startup-logo-pulse {
+  0%, 100% { transform: scale(0.94); opacity: 0.86; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes startup-splash-exit {
+  to { opacity: 0; visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-startup-splash, .app-startup-splash-logo { animation: none; }
+}
+
+@media (max-width: 639px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+
+  .app-tour-active {
+    outline-width: 2px !important;
+    outline-offset: 2px;
+  }
+}

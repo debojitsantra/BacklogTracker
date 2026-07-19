@@ -3,14 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import EmojiPicker, { EmojiStyle, Theme } from 'emoji-picker-react';
+import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
 import { PRESET_SUBJECTS, PALETTE } from '../data';
-import { AppData, Subject } from '../types';
+import { AppData, CustomPreset, Subject } from '../types';
 import { getLocalDateString } from '../utils/date';
 import { validateAndParseImport } from '../utils/validation';
 import { Plus, Trash2, Palette, Sparkles, AlertCircle, CheckCircle, Upload, X, Check, FileJson, CalendarDays, HelpCircle } from 'lucide-react';
+
+const EmojiPicker = lazy(() => import('emoji-picker-react'));
 
 const POPULAR_EMOJIS = [
   '📚', '📝', '💻', '🎨', '🎮', '🏋️', '🏃', '🎸', '🎬', '🍿',
@@ -37,6 +39,14 @@ const WEEK_DAYS = [
 ];
 
 type ScheduleMode = 'none' | 'perday' | 'repeat';
+
+function isColorLight(color: string): boolean {
+  const hex = color.replace('#', '');
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  return (red * 299 + green * 587 + blue * 114) / 1000 > 140;
+}
 
 const TRACKING_TYPES: Record<string, { label: string; emoji: string; title: string; entries: Array<{ name: string; emoji: string; color: string; completion_mode?: 'todo' | 'backlog' }> }> = {
   study: {
@@ -104,6 +114,23 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
   const [autoGrowthEnabled, setAutoGrowthEnabled] = useState(initialData.auto_growth_enabled !== false);
   const [activeTrackType, setActiveTrackType] = useState<string | null>(Object.keys(initialData.subjects || {}).length ? 'custom' : null);
   const [customCategoryName, setCustomCategoryName] = useState('Custom');
+  const [customCategoryEmoji, setCustomCategoryEmoji] = useState('✨');
+  const [activeCustomPresetId, setActiveCustomPresetId] = useState<string | null>(null);
+  const [customPresets, setCustomPresets] = useState<CustomPreset[]>(() => {
+    let stored: CustomPreset[] = [];
+    try {
+      const value = localStorage.getItem('backlog_tracker_custom_presets');
+      if (value) {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) stored = parsed;
+      }
+    } catch {
+      // A malformed local preset cache should never block setup.
+    }
+    // A backup that contains this field (including an empty list) is authoritative.
+    // The separate cache is only for older app data saved before presets existed.
+    return initialData.custom_presets !== undefined ? initialData.custom_presets : stored;
+  });
   const [isNamingCustomCategory, setIsNamingCustomCategory] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [addingCustomName, setAddingCustomName] = useState(false);
@@ -173,6 +200,11 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
   const [validationError, setValidationError] = useState<string | null>(null);
   const [showEditorHelp, setShowEditorHelp] = useState(false);
   const [activeEmojiIdx, setActiveEmojiIdx] = useState<number | null>(null);
+  const [categoryEmojiPickerOpen, setCategoryEmojiPickerOpen] = useState(false);
+  const [colorPickerIdx, setColorPickerIdx] = useState<number | null>(null);
+  const [customColorDraft, setCustomColorDraft] = useState<string | null>(null);
+  const colorPressTimerRef = useRef<number | null>(null);
+  const didLongPressColorRef = useRef(false);
 
   const [showImportPanel, setShowImportPanel] = useState(false);
   const [importText, setImportText] = useState('');
@@ -183,6 +215,35 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     parsedData?: AppData;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleBackButton = () => {
+      if (customColorDraft !== null) {
+        setCustomColorDraft(null);
+      } else if (colorPickerIdx !== null) {
+        setColorPickerIdx(null);
+      } else if (activeEmojiIdx !== null) {
+        setActiveEmojiIdx(null);
+      } else if (categoryEmojiPickerOpen) {
+        setCategoryEmojiPickerOpen(false);
+      } else if (showEditorHelp) {
+        setShowEditorHelp(false);
+      } else if (editorOpen) {
+        setEditorOpen(false);
+        cancelCustomNamedRow();
+      } else if (showImportPanel) {
+        setShowImportPanel(false);
+        setImportText('');
+        setImportValidation(null);
+      } else if (onCancel) {
+        onCancel();
+      } else {
+        window.dispatchEvent(new Event('app-request-exit'));
+      }
+    };
+    window.addEventListener('android-back-button', handleBackButton);
+    return () => window.removeEventListener('android-back-button', handleBackButton);
+  }, [activeEmojiIdx, categoryEmojiPickerOpen, colorPickerIdx, customColorDraft, editorOpen, onCancel, showEditorHelp, showImportPanel]);
 
   const togglePreset = (name: string) => {
     if (selectedPresets.includes(name)) {
@@ -243,9 +304,13 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
 
     if (key === 'custom') {
       setCustomCategoryName('Custom');
-      setIsNamingCustomCategory(true);
+      setCustomCategoryEmoji('✨');
+      setActiveCustomPresetId(null);
+      setIsNamingCustomCategory(false);
       setEditingSubjects([]);
-      setEditorOpen(true);
+      setCustomSubjects([]);
+      setEditorOpen(false);
+      window.dispatchEvent(new Event('tracker-tracking-type-selected'));
       return;
     }
 
@@ -261,8 +326,45 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       growth_mode: 'none' as const,
       completion_mode: (entry.completion_mode || 'backlog') as 'todo' | 'backlog'
     }));
-    setEditingSubjects(newSubs);
-    setEditorOpen(true);
+    setCustomSubjects(newSubs);
+    if (courseName === 'My Backlog Tracker' || Object.values(TRACKING_TYPES).some(item => item.title === courseName)) {
+      setCourseName(template.title);
+    }
+    setEditorOpen(false);
+    window.dispatchEvent(new Event('tracker-tracking-type-selected'));
+  };
+
+  const selectCustomPreset = (preset: CustomPreset) => {
+    setActiveTrackType('custom');
+    setActiveCustomPresetId(preset.id);
+    setCustomCategoryName(preset.name);
+    setCustomCategoryEmoji(preset.emoji || '✨');
+    setCustomSubjects(preset.entries.map(entry => ({ ...entry, repeat_days: entry.repeat_days ? [...entry.repeat_days] : undefined })));
+    setEditingSubjects([]);
+    setEditorOpen(false);
+    window.dispatchEvent(new Event('tracker-tracking-type-selected'));
+  };
+
+  const saveCustomPreset = (entries: Subject[]) => {
+    if (activeTrackType !== 'custom') return;
+    const usableEntries = entries
+      .filter(entry => entry.name.trim())
+      .map(entry => ({ ...entry, name: entry.name.trim(), repeat_days: entry.repeat_days ? [...entry.repeat_days] : undefined }));
+    if (usableEntries.length === 0) return;
+
+    const preset: CustomPreset = {
+      id: activeCustomPresetId || `custom-${Date.now()}`,
+      name: customCategoryName.trim() || 'Custom',
+      emoji: customCategoryEmoji.trim() || '✨',
+      entries: usableEntries
+    };
+    const index = customPresets.findIndex(item => item.id === preset.id);
+    const updated = index === -1
+      ? [...customPresets, preset]
+      : customPresets.map(item => item.id === preset.id ? preset : item);
+    setActiveCustomPresetId(preset.id);
+    setCustomPresets(updated);
+    localStorage.setItem('backlog_tracker_custom_presets', JSON.stringify(updated));
   };
 
   const addCustomRow = () => {
@@ -322,6 +424,29 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     const currentIdx = PALETTE.indexOf(currentColor);
     const nextIdx = (currentIdx + 1) % PALETTE.length;
     updateEditingSubject(index, { color: PALETTE[nextIdx] });
+  };
+
+  const startColorPress = (index: number) => {
+    didLongPressColorRef.current = false;
+    colorPressTimerRef.current = window.setTimeout(() => {
+      didLongPressColorRef.current = true;
+      setColorPickerIdx(index);
+    }, 650);
+  };
+
+  const endColorPress = () => {
+    if (colorPressTimerRef.current !== null) {
+      window.clearTimeout(colorPressTimerRef.current);
+      colorPressTimerRef.current = null;
+    }
+  };
+
+  const handleColorClick = (index: number) => {
+    if (didLongPressColorRef.current) {
+      didLongPressColorRef.current = false;
+      return;
+    }
+    cycleEditingColor(index);
   };
 
   const handleEditingScheduleModeChange = (index: number, mode: ScheduleMode) => {
@@ -516,6 +641,22 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
 
     const todayString = getLocalDateString();
 
+    const updatedCustomPresets = activeTrackType === 'custom'
+      ? (() => {
+        const preset: CustomPreset = {
+          id: activeCustomPresetId || `custom-${Date.now()}`,
+          name: customCategoryName.trim() || 'Custom',
+          emoji: customCategoryEmoji.trim() || '✨',
+          entries: Object.values(consolidatedSubjects).map(subject => ({ ...subject, repeat_days: subject.repeat_days ? [...subject.repeat_days] : undefined }))
+        };
+        const existingIndex = customPresets.findIndex(item => item.id === preset.id);
+        if (existingIndex === -1) return [...customPresets, preset];
+        return customPresets.map(item => item.id === preset.id ? preset : item);
+      })()
+      : customPresets;
+
+    localStorage.setItem('backlog_tracker_custom_presets', JSON.stringify(updatedCustomPresets));
+
     onSave({
       subjects: consolidatedSubjects,
       classes_per_day: classesPerDay,
@@ -525,19 +666,20 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       setup_done: true,
       theme: initialData.theme || 'dark',
       palette_color: initialData.palette_color,
-      auto_growth_enabled: autoGrowthEnabled
+      auto_growth_enabled: autoGrowthEnabled,
+      custom_presets: updatedCustomPresets
     });
   };
 
   return (
-    <div className="min-h-screen bg-[#fef7ff] text-[#1d1b20] dark:bg-[#111318] dark:text-[#e6e1e5] px-4 py-8 flex items-center justify-center">
+    <div className="min-h-screen bg-[#fef7ff] text-[#1d1b20] dark:bg-[#111318] dark:text-[#e6e1e5] px-3 sm:px-4 py-4 sm:py-8 flex items-start sm:items-center justify-center">
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="w-full max-w-2xl bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[28px] shadow-sm overflow-hidden p-6 md:p-8"
+        className="w-full max-w-2xl bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[22px] sm:rounded-[28px] shadow-sm overflow-hidden p-4 sm:p-6 md:p-8"
       >
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between gap-3 mb-5 sm:mb-6">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-brand-container rounded-xl border border-transparent dark:border-amber-400/10">
               <Sparkles className="w-6 h-6 text-brand" />
@@ -709,7 +851,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
           )}
         </AnimatePresence>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
           <div className="space-y-4">
             <h2 className="text-sm font-bold tracking-wide text-brand border-b border-[#cac4d0]/30 dark:border-[#24262f]/60 pb-1 uppercase">
               Tracker Basics
@@ -742,6 +884,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                   value={courseName}
                   onChange={e => setCourseName(e.target.value)}
                   placeholder="e.g., Gaming Backlog, Work Queue, Study Plan"
+                  data-tour="tracker-name"
                   className="bg-brand-container text-sm text-[#1d1b20] dark:text-white px-3 py-2 rounded-xl border border-transparent focus:border-brand focus:outline-none transition-all h-11 font-medium placeholder-[#49454f]/50 dark:placeholder-white/30"
                   required
                 />
@@ -785,53 +928,79 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
             <h2 className="text-sm font-bold tracking-wide text-brand border-b border-[#cac4d0]/30 dark:border-[#24262f]/60 pb-1 uppercase">
               What do you want to track?
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {Object.entries(TRACKING_TYPES).map(([key, type]) => (
+            <div data-tour="tracking-type" className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
+              {Object.entries(TRACKING_TYPES).filter(([key]) => key !== 'custom').map(([key, type]) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => selectTrackingType(key)}
-                  className={`min-h-[86px] rounded-2xl border p-3 flex flex-col items-center justify-center gap-2 transition-all ${activeTrackType === key
+                  data-track-type={key}
+                  className={`min-h-[76px] sm:min-h-[86px] rounded-2xl border p-2 sm:p-3 flex flex-col items-center justify-center gap-1.5 sm:gap-2 transition-all ${activeTrackType === key
                     ? 'bg-brand-container border-brand text-brand shadow-sm'
                     : 'bg-white dark:bg-[#1a1c22]/40 border-[#cac4d0]/30 dark:border-[#24262f]/60 text-[#1d1b20] dark:text-white hover:border-brand/40'
                     }`}
                 >
-                  {key === 'custom' ? (
-                    <Plus className="w-6 h-6 text-brand" />
-                  ) : (
-                    <span className="text-2xl">{type.emoji}</span>
-                  )}
-                  <span className="text-xs font-bold">
-                    {key === 'custom' && customCategoryName !== 'Custom' ? customCategoryName : type.label}
-                  </span>
+                  <span className="text-2xl">{type.emoji}</span>
+                  <span className="text-xs font-bold">{type.label}</span>
                 </button>
               ))}
+              {customPresets.map(preset => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => selectCustomPreset(preset)}
+                  className={`min-h-[76px] sm:min-h-[86px] rounded-2xl border p-2 sm:p-3 flex flex-col items-center justify-center gap-1.5 sm:gap-2 transition-all ${activeCustomPresetId === preset.id
+                    ? 'bg-brand-container border-brand text-brand shadow-sm'
+                    : 'bg-white dark:bg-[#1a1c22]/40 border-[#cac4d0]/30 dark:border-[#24262f]/60 text-[#1d1b20] dark:text-white hover:border-brand/40'
+                    }`}
+                  title={`Use ${preset.name} preset`}
+                >
+                  <span className="text-2xl">{preset.emoji || '✨'}</span>
+                  <span className="text-xs font-bold truncate max-w-full">{preset.name}</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => selectTrackingType('custom')}
+                data-track-type="custom"
+                className={`min-h-[76px] sm:min-h-[86px] rounded-2xl border p-2 sm:p-3 flex flex-col items-center justify-center gap-1.5 sm:gap-2 transition-all ${activeTrackType === 'custom' && activeCustomPresetId === null
+                  ? 'bg-brand-container border-brand text-brand shadow-sm'
+                  : 'bg-white dark:bg-[#1a1c22]/40 border-[#cac4d0]/30 dark:border-[#24262f]/60 text-[#1d1b20] dark:text-white hover:border-brand/40'
+                  }`}
+              >
+                <Plus className="w-6 h-6 text-brand" />
+                <span className="text-xs font-bold">{customPresets.length > 0 ? 'New Custom' : 'Custom'}</span>
+              </button>
             </div>
           </div>
 
-          {customSubjects.length > 0 && (
-            <div className="space-y-3 bg-[#f3edf7]/30 dark:bg-[#24262f]/30 border border-[#cac4d0]/20 dark:border-[#24262f]/60 p-4 rounded-2xl">
+          {activeTrackType !== null && (
+            <div data-tour="configured-items" className="space-y-3 bg-[#f3edf7]/30 dark:bg-[#24262f]/30 border border-[#cac4d0]/20 dark:border-[#24262f]/60 p-4 rounded-2xl">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-brand uppercase tracking-wider">
-                  Configured Entries ({customSubjects.length})
+                  Starter Items ({customSubjects.length})
                 </span>
                 <button
                   type="button"
                   onClick={() => {
                     setEditingSubjects([...customSubjects]);
-                    if (activeTrackType === 'custom' && customSubjects.length === 0) {
-                      setIsNamingCustomCategory(true);
-                    } else {
-                      setIsNamingCustomCategory(false);
-                    }
+                    setIsNamingCustomCategory(false);
                     setEditorOpen(true);
                   }}
                   className="text-[10px] font-bold text-brand bg-brand-container hover:bg-brand-container-hover px-3.5 py-1.5 rounded-full border border-brand/20 transition-all cursor-pointer flex items-center gap-1"
                   style={{ minHeight: '28px' }}
                 >
-                  Configure / Add
+                  Edit items
                 </button>
               </div>
+
+              <p className="text-[11px] text-[#49454f] dark:text-[#cac4d0] leading-relaxed">
+                {customSubjects.length > 0 ? <>
+                  These are only examples. Tap <span className="font-bold text-brand">Edit items</span> to add your own, rename, or remove anything you do not want to track.
+                </> : <>
+                  Your custom list is empty. Tap <span className="font-bold text-brand">Edit items</span>, then use <span className="font-bold text-brand">Add item</span> to create your first item.
+                </>}
+              </p>
 
               <div className="max-h-60 overflow-y-auto divide-y divide-[#cac4d0]/20 dark:divide-[#24262f]/60 pr-1">
                 {customSubjects.map((sub, index) => {
@@ -878,7 +1047,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
             </div>
           )}
 
-          <div className="flex gap-4 pt-4 border-t border-[#cac4d0]/30 dark:border-[#24262f]/60">
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-4 pt-4 border-t border-[#cac4d0]/30 dark:border-[#24262f]/60">
             {onCancel && (
               <button
                 type="button"
@@ -907,33 +1076,30 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                 initial={{ scale: 0.95, opacity: 0, y: 10 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.95, opacity: 0, y: 10 }}
-                className="w-full max-w-3xl max-h-[88vh] overflow-hidden bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[28px] shadow-2xl flex flex-col"
+                className="w-full max-w-3xl max-h-[94vh] sm:max-h-[88vh] overflow-hidden bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/30 dark:border-[#24262f]/60 rounded-[22px] sm:rounded-[28px] shadow-2xl flex flex-col"
               >
-                <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-[#cac4d0]/20 dark:border-[#24262f]/60">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-brand-container text-brand flex items-center justify-center text-xl">
-                      {TRACKING_TYPES[activeTrackType]?.emoji}
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-[#1d1b20] dark:text-white flex items-center gap-1.5">
-                        <span>{activeTrackType === 'custom' ? customCategoryName : (TRACKING_TYPES[activeTrackType]?.label || 'Custom')} Entries</span>
+                <div className="flex items-start sm:items-center justify-between gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-[#cac4d0]/20 dark:border-[#24262f]/60">
+                  <div className="min-w-0 flex-1">
+                    <div className="min-w-0">
+                      <h3 className="text-xs sm:text-sm md:text-base font-bold text-[#1d1b20] dark:text-white flex items-center gap-1.5">
+                        <span className="truncate">{activeTrackType === 'custom' ? customCategoryName : (TRACKING_TYPES[activeTrackType]?.label || 'Custom')} Entries</span>
                         {activeTrackType === 'custom' && !isNamingCustomCategory && (
                           <button
                             type="button"
                             onClick={() => setIsNamingCustomCategory(true)}
                             className="text-[10px] text-brand hover:underline font-normal cursor-pointer"
                           >
-                            (Rename)
+                            Edit name & emoji
                           </button>
                         )}
                       </h3>
-                      <p className="text-[10px] text-[#49454f] dark:text-[#cac4d0] font-semibold">
-                        Edit names, backlog counts, colors, and schedule rules.
+                      <p className="hidden sm:block text-[10px] text-[#49454f] dark:text-[#cac4d0] font-semibold">
+                        Add the basics first. Open options only when you need schedules or a one-time task.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                     <button
                       type="button"
                       onClick={() => setShowEditorHelp(prev => !prev)}
@@ -952,10 +1118,11 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                           const newColor = PALETTE[editingSubjects.length % PALETTE.length];
                           setEditingSubjects(prev => [...prev, { name: '', emoji: '📚', color: newColor, backlog: 0, daily_increase: 1, perday_type: 'tasks', growth_mode: 'none' as const, completion_mode: 'backlog' as const }]);
                         }}
-                        className="p-2 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-[#cac4d0]/20"
+                        className="px-3 py-2 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-[#cac4d0]/30 dark:border-[#24262f] text-xs font-bold flex items-center gap-1"
                         title="Add custom entry"
                       >
                         <Plus className="w-4 h-4" />
+                        <span>Add item</span>
                       </button>
                     )}
                     <button
@@ -1009,7 +1176,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                   )}
                 </AnimatePresence>
 
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                   {activeTrackType === 'custom' && isNamingCustomCategory ? (
                     <div className="py-8 px-4 max-w-md mx-auto space-y-6">
                       <div className="text-center space-y-2">
@@ -1020,7 +1187,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                           Name your Custom Category
                         </h3>
                         <p className="text-xs text-[#49454f] dark:text-[#cac4d0]">
-                          Enter a name for this category (e.g. Workout, Gym, Reading) to personalize your tracker.
+                          Give this list a name and emoji. When you apply the configuration, it will be saved as a reusable preset.
                         </p>
                       </div>
 
@@ -1035,6 +1202,18 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                             className="bg-brand-container text-sm text-[#1d1b20] dark:text-white px-3 py-2.5 rounded-xl border border-transparent focus:border-brand focus:outline-none font-semibold text-center"
                             autoFocus
                           />
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-xs font-bold text-[#49454f] dark:text-[#cac4d0]">Preset Emoji</label>
+                          <button
+                            type="button"
+                            onClick={() => setCategoryEmojiPickerOpen(true)}
+                            className="bg-brand-container hover:bg-brand-container-hover text-[#1d1b20] dark:text-white px-3 py-2 rounded-xl border border-transparent hover:border-brand flex items-center justify-center gap-2 text-xs font-bold transition-colors"
+                          >
+                            <span className="text-xl">{customCategoryEmoji || '✨'}</span>
+                            Choose emoji
+                          </button>
                         </div>
 
                         <button
@@ -1052,14 +1231,15 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                       </div>
                     </div>
                   ) : editingSubjects.length === 0 && !addingCustomName ? (
-                    <div className="min-h-[280px] flex items-center justify-center">
+                    <div className="min-h-[240px] flex flex-col items-center justify-center text-center gap-3">
+                      <p className="text-xs text-[#49454f] dark:text-[#cac4d0] max-w-[220px]">Start with one item. You can add more whenever you need.</p>
                       <button
                         type="button"
                         onClick={() => setAddingCustomName(true)}
-                        className="w-24 h-24 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-brand/20 flex items-center justify-center shadow-sm"
+                        className="px-5 min-h-12 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-brand/20 flex items-center justify-center gap-2 shadow-sm text-xs font-bold"
                         title="Add custom entry"
                       >
-                        <Plus className="w-10 h-10" />
+                        <Plus className="w-5 h-5" /> Add your first item
                       </button>
                     </div>
                   ) : (
@@ -1099,20 +1279,20 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                             initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
                             key={`editing-sub-${idx}`}
-                            className="flex flex-col lg:flex-row items-center gap-3 bg-white dark:bg-[#1a1c22]/50 border border-[#cac4d0]/30 dark:border-[#24262f]/60 p-3 rounded-xl shadow-sm"
+                            className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3 bg-white dark:bg-[#1a1c22]/50 border border-[#cac4d0]/30 dark:border-[#24262f]/60 p-3 rounded-xl shadow-sm"
                           >
-                            <input
-                              type="text"
-                              placeholder="Entry name..."
-                              value={sub.name}
-                              onChange={e => updateEditingSubject(idx, { name: e.target.value })}
-                              className="bg-brand-container text-sm text-[#1d1b20] dark:text-white px-3 py-2 rounded-xl flex-1 w-full border border-transparent focus:border-brand focus:outline-none transition-all font-semibold"
-                            />
-
-                            <div className="flex items-center gap-1">
+                            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 w-full lg:flex-1">
+                              <input
+                                type="text"
+                                placeholder="Entry name..."
+                                value={sub.name}
+                                onChange={e => updateEditingSubject(idx, { name: e.target.value })}
+                                className="bg-brand-container text-sm text-[#1d1b20] dark:text-white px-3 py-2 min-h-11 rounded-xl w-full border border-transparent focus:border-brand focus:outline-none transition-all font-semibold"
+                              />
                               <button
                                 type="button"
                                 title="Pick emoji"
+                                aria-label="Pick emoji"
                                 onClick={() => setActiveEmojiIdx(idx)}
                                 className="text-xl w-10 h-10 rounded-xl bg-brand-container hover:bg-brand-container-hover flex items-center justify-center border border-transparent hover:border-brand/30 transition-all cursor-pointer"
                               >
@@ -1121,7 +1301,13 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
 
                               <button
                                 type="button"
-                                onClick={() => cycleEditingColor(idx)}
+                                onPointerDown={() => startColorPress(idx)}
+                                onPointerUp={endColorPress}
+                                onPointerCancel={endColorPress}
+                                onPointerLeave={endColorPress}
+                                onContextMenu={event => event.preventDefault()}
+                                onClick={() => handleColorClick(idx)}
+                                aria-label="Change item color"
                                 className="w-9 h-9 rounded-xl flex items-center justify-center transition-all border border-transparent dark:border-[#24262f] hover:border-neutral-400 cursor-pointer"
                                 style={{ backgroundColor: sub.color }}
                                 title="Cycle Palette Color"
@@ -1130,8 +1316,8 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                               </button>
                             </div>
 
-                            <div className="flex items-center gap-3 justify-between w-full lg:w-auto">
-                              <div className="flex flex-col items-center">
+                            <div className="flex items-center gap-2 justify-between w-full lg:w-auto">
+                              <div className="flex flex-col items-center flex-1 lg:flex-none">
                                 <span className="text-[9px] text-[#49454f] dark:text-[#cac4d0] font-bold">{isTodoEntry ? 'One Time Task' : 'Backlog'}</span>
                                 {isTodoEntry ? (
                                   <span
@@ -1144,33 +1330,33 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                                     min="0"
                                     value={sub.backlog}
                                     onChange={e => updateEditingSubject(idx, { backlog: Math.max(0, parseInt(e.target.value) || 0) })}
-                                    className="bg-brand-container text-center text-xs w-14 py-2 rounded-xl border border-transparent focus:border-brand focus:outline-none text-[#1d1b20] dark:text-white font-mono"
+                                    className="bg-brand-container text-center text-xs w-full lg:w-14 py-2 rounded-xl border border-transparent focus:border-brand focus:outline-none text-[#1d1b20] dark:text-white font-mono"
                                   />
                                 )}
                               </div>
 
                               {autoGrowthEnabled && editMode === 'perday' && (
-                                <div className="flex flex-col items-center">
+                                <div className="flex flex-col items-center flex-1 lg:flex-none">
                                   <span className="text-[9px] text-[#49454f] dark:text-[#cac4d0] font-bold">Per day</span>
                                   <input
                                     type="number"
                                     min="0"
                                     value={sub.daily_increase}
                                     onChange={e => updateEditingSubject(idx, { daily_increase: Math.max(0, parseInt(e.target.value) || 0) })}
-                                    className="bg-brand-container text-center text-xs w-14 py-2 rounded-xl border border-transparent focus:border-brand focus:outline-none text-[#1d1b20] dark:text-white font-mono"
+                                    className="bg-brand-container text-center text-xs w-full lg:w-14 py-2 rounded-xl border border-transparent focus:border-brand focus:outline-none text-[#1d1b20] dark:text-white font-mono"
                                   />
                                 </div>
                               )}
 
                               {autoGrowthEnabled && editMode === 'repeat' && (
-                                <div className="flex flex-col items-center">
+                                <div className="flex flex-col items-center flex-1 lg:flex-none">
                                   <span className="text-[9px] text-[#49454f] dark:text-[#cac4d0] font-bold">Per repeat</span>
                                   <input
                                     type="number"
                                     min="1"
                                     value={sub.daily_increase || 1}
                                     onChange={e => updateEditingSubject(idx, { daily_increase: Math.max(1, parseInt(e.target.value) || 1) })}
-                                    className="bg-brand-container text-center text-xs w-14 py-2 rounded-xl border border-transparent focus:border-brand focus:outline-none text-[#1d1b20] dark:text-white font-mono"
+                                    className="bg-brand-container text-center text-xs w-full lg:w-14 py-2 rounded-xl border border-transparent focus:border-brand focus:outline-none text-[#1d1b20] dark:text-white font-mono"
                                   />
                                 </div>
                               )}
@@ -1178,6 +1364,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                               <button
                                 type="button"
                                 onClick={() => removeEditingSubject(idx)}
+                                aria-label={`Remove ${sub.name || 'item'}`}
                                 className="p-2 text-[#ba1a1a] dark:text-red-400 rounded-full hover:bg-red-500/10 transition-colors cursor-pointer"
                                 style={{ minWidth: '44px', minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
@@ -1185,9 +1372,15 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                               </button>
                             </div>
 
-                            <div className="w-full lg:w-56 space-y-2">
+                            <details className="w-full lg:w-56 group rounded-xl bg-[#f3edf7]/50 dark:bg-[#24262f]/40 p-2">
+                              <summary className="cursor-pointer list-none text-[10px] font-bold text-brand flex items-center justify-between">
+                                More options
+                                <span className="group-open:rotate-45 transition-transform text-base leading-none">+</span>
+                              </summary>
+                              <div className="space-y-2 mt-2 pt-2 border-t border-[#cac4d0]/30 dark:border-[#24262f]/60">
                               <div className="space-y-1">
                                 <span className="text-[9px] text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">Completion Mode</span>
+                                <p className="text-[10px] leading-relaxed text-[#49454f] dark:text-[#cac4d0]">Backlog keeps a number to add and complete. One-time task is simply pending or done.</p>
                                 <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#f3edf7] dark:bg-[#24262f] p-1">
                                   {(['backlog', 'todo'] as const).map(mode => (
                                     <button
@@ -1217,6 +1410,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                               {autoGrowthEnabled && !isTodoEntry && (
                                 <div className="space-y-1">
                                   <span className="text-[9px] text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">Schedule</span>
+                                  <p className="text-[10px] leading-relaxed text-[#49454f] dark:text-[#cac4d0]">Manual changes only when you tap it. Per day adds work every day. Repeat adds work only on the days you choose.</p>
                                   <div className="grid grid-cols-3 gap-1 rounded-xl bg-[#f3edf7] dark:bg-[#24262f] p-1">
                                     {(['none', 'perday', 'repeat'] as ScheduleMode[]).map(mode => (
                                       <button
@@ -1235,6 +1429,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                                         <CalendarDays className="w-3 h-3 text-brand" />
                                         Repeat days
                                       </span>
+                                      <p className="text-[10px] leading-relaxed text-[#49454f] dark:text-[#cac4d0]">Choose every day this item should be added automatically.</p>
                                       <div className="grid grid-cols-4 gap-1">
                                         {WEEK_DAYS.map(day => {
                                           const selected = (sub.repeat_days || []).includes(day.key);
@@ -1254,7 +1449,8 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                                   )}
                                 </div>
                               )}
-                            </div>
+                              </div>
+                            </details>
                           </motion.div>
                         );
                       })}
@@ -1262,7 +1458,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                   )}
                 </div>
 
-                <div className="px-6 py-4 border-t border-[#cac4d0]/20 dark:border-[#24262f]/60 flex justify-end">
+                <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-[#cac4d0]/20 dark:border-[#24262f]/60 flex justify-end">
                   <button
                     type="button"
                     onClick={() => {
@@ -1284,6 +1480,8 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                         }
                       }
 
+                      saveCustomPreset(editingSubjects);
+
                       setEditorOpen(false);
                       cancelCustomNamedRow();
                     }}
@@ -1294,29 +1492,104 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                 </div>
 
                 <AnimatePresence>
-                  {activeEmojiIdx !== null && (
+                  {(activeEmojiIdx !== null || categoryEmojiPickerOpen) && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-                      <div className="fixed inset-0" onClick={() => setActiveEmojiIdx(null)} />
+                      <div className="fixed inset-0" onClick={() => { setActiveEmojiIdx(null); setCategoryEmojiPickerOpen(false); }} />
                       <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
                         className="w-full max-w-sm rounded-2xl shadow-xl overflow-hidden bg-white dark:bg-[#1a1c22] z-10 border border-[#cac4d0]/30 dark:border-[#24262f]/60 p-1"
                       >
-                        <EmojiPicker
-                          onEmojiClick={(emojiData) => {
-                            if (activeEmojiIdx !== null) {
+                        <Suspense fallback={<div className="h-[350px] flex items-center justify-center text-xs font-bold text-brand">Loading emoji picker…</div>}>
+                          <EmojiPicker
+                          onEmojiClick={(emojiData: EmojiClickData) => {
+                            if (categoryEmojiPickerOpen) {
+                              setCustomCategoryEmoji(emojiData.emoji);
+                            } else if (activeEmojiIdx !== null) {
                               updateEditingSubject(activeEmojiIdx, { emoji: emojiData.emoji });
                             }
                             setActiveEmojiIdx(null);
+                            setCategoryEmojiPickerOpen(false);
                           }}
                           autoFocusSearch={false}
                           width="100%"
                           height="350px"
-                          emojiStyle={EmojiStyle.NATIVE}
-                          theme={document.documentElement.classList.contains('dark') ? Theme.DARK : Theme.LIGHT}
-                        />
+                          emojiStyle={'native' as EmojiStyle}
+                          theme={(document.documentElement.classList.contains('dark') ? 'dark' : 'light') as Theme}
+                          />
+                        </Suspense>
                       </motion.div>
+                    </div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {colorPickerIdx !== null && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                      <button type="button" className="fixed inset-0 cursor-default" aria-label="Close color picker" onClick={() => setColorPickerIdx(null)} />
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="relative w-full max-w-xs rounded-2xl bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/60 dark:border-[#454854] p-4 shadow-2xl"
+                      >
+                        <h4 className="text-sm font-bold text-[#1d1b20] dark:text-white">Choose item color</h4>
+                        <p className="text-[11px] text-[#49454f] dark:text-[#cac4d0] mt-1">Tap a color to select it. A quick tap on the swatch still cycles colors.</p>
+                        <div className="grid grid-cols-5 gap-3 mt-4">
+                          {PALETTE.map(color => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => {
+                                updateEditingSubject(colorPickerIdx, { color });
+                                setColorPickerIdx(null);
+                              }}
+                              className={`w-10 h-10 rounded-xl border-2 shadow-sm transition-transform hover:scale-110 ${editingSubjects[colorPickerIdx]?.color === color ? 'border-[#1d1b20] dark:border-white scale-110' : 'border-white/70 dark:border-white/20'}`}
+                              style={{ backgroundColor: color }}
+                              aria-label={`Select ${color}`}
+                            />
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setCustomColorDraft(editingSubjects[colorPickerIdx]?.color || '#6750a4')}
+                            className="w-10 h-10 rounded-xl border-2 border-dashed border-brand/70 bg-brand-container text-brand flex flex-col items-center justify-center cursor-pointer text-[8px] font-bold leading-none"
+                            title="Choose a custom color"
+                          >
+                            <span className="text-sm leading-none">+</span>
+                            Custom
+                          </button>
+                        </div>
+                        <button type="button" onClick={() => setColorPickerIdx(null)} className="w-full mt-4 py-2 rounded-full bg-brand-container text-brand text-xs font-bold">Cancel</button>
+                      </motion.div>
+                    </div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {customColorDraft !== null && colorPickerIdx !== null && (
+                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                      <div className="relative w-full max-w-xs rounded-2xl bg-white dark:bg-[#1a1c22] border border-[#cac4d0]/60 dark:border-[#454854] p-5 shadow-2xl">
+                        <h4 className="text-sm font-bold text-[#1d1b20] dark:text-white">Custom color</h4>
+                        <p className="text-[11px] text-[#49454f] dark:text-[#cac4d0] mt-1">Choose a color, preview it below, then confirm.</p>
+                        <div className="mt-4 rounded-2xl p-4 border border-[#cac4d0]/40 dark:border-[#454854]" style={{ backgroundColor: customColorDraft }}>
+                          <span className="text-xs font-black" style={{ color: isColorLight(customColorDraft) ? '#1d1b20' : '#ffffff' }}>Item color preview</span>
+                        </div>
+                        <div className="mt-4 flex items-center gap-3 bg-brand-container rounded-xl p-3">
+                          <input
+                            type="color"
+                            value={customColorDraft}
+                            onChange={event => setCustomColorDraft(event.target.value)}
+                            className="w-11 h-10 p-0 border-0 bg-transparent cursor-pointer"
+                            aria-label="Choose custom item color"
+                          />
+                          <span className="font-mono text-xs font-bold text-[#1d1b20] dark:text-white uppercase">{customColorDraft}</span>
+                        </div>
+                        <div className="flex gap-2 mt-5">
+                          <button type="button" onClick={() => setCustomColorDraft(null)} className="flex-1 py-2.5 rounded-full bg-brand-container text-brand text-xs font-bold">Cancel</button>
+                          <button type="button" onClick={() => { updateEditingSubject(colorPickerIdx, { color: customColorDraft }); setCustomColorDraft(null); setColorPickerIdx(null); }} className="flex-1 py-2.5 rounded-full bg-brand text-white dark:text-[#111318] text-xs font-bold">OK</button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </AnimatePresence>
