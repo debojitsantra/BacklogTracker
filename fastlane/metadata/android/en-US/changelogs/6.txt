@@ -1,6 +1,6 @@
-New onboarding, backup, and Android polish:
+Bug fixes, visual improvements
 
-- Added setup tutorial and improved splash-screen handoff
+- Added setup tutorial and improved splash-screen
 - Added editable built-in presets with JSON backup support
 - Added repository and donation links in Settings
 - Improved quote attribution formatting
