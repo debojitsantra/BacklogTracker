@@ -31,10 +31,13 @@ Source Repository: [Github](https://github.com/debojitsantra/BacklogTracker-Temp
 ## Screenshots
 ### Phone
 <p align="center">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="20%" alt="Screenshot P1" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="20%" alt="Screenshot P2" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="20%" alt="Screenshot P3" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="20%" alt="Screenshot P4" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="15%" alt="Screenshot P1" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="15%" alt="Screenshot P2" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="15%" alt="Screenshot P3" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="15%" alt="Screenshot P4" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="15%" alt="Screenshot P5" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/6.png" width="15%" alt="Screenshot P6" />
+
 </p>
 
 ### Desktop
@@ -44,8 +47,6 @@ Source Repository: [Github](https://github.com/debojitsantra/BacklogTracker-Temp
   <img src="assets/images/Screenshots/2.png" width="45%" alt="Screenshot D 2" />
   <img src="assets/images/Screenshots/3.png" width="45%" alt="Screenshot D 3" />
   <img src="assets/images/Screenshots/4.png" width="45%" alt="Screenshot D 4" />
-  <img src="assets/images/Screenshots/5.png" width="45%" alt="Screenshot D 5" />
-  <img src="assets/images/Screenshots/6.png" width="45%" alt="Screenshot D 6" />
 </p>
 
 ## Tech Stack
