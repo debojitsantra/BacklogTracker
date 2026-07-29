@@ -1,0 +1,7 @@
+New onboarding, backup, and Android polish:
+
+- Added setup tutorial and improved splash-screen handoff
+- Added editable built-in presets with JSON backup support
+- Added repository and donation links in Settings
+- Improved quote attribution formatting
+- Fixed preset selection state
