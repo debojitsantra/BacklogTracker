@@ -586,7 +586,9 @@ export default function SettingsModal({
                         setValidationMessage(null);
                       }}
                       placeholder='{ "schemaVersion": 1, ... }'
-                      className="bg-[#f3edf7]/30 dark:bg-[#111318]/50 text-xs font-mono p-3 rounded-xl border border-[#cac4d0]/40 dark:border-[#24262f] h-24 focus:outline-none focus:border-brand text-[#1d1b20] dark:text-white"
+                      onFocus={() => window.AndroidTextMenu?.setEnabled(true)}
+                      onBlur={() => window.AndroidTextMenu?.setEnabled(false)}
+                      className="allow-native-text-menu bg-[#f3edf7]/30 dark:bg-[#111318]/50 text-xs font-mono p-3 rounded-xl border border-[#cac4d0]/40 dark:border-[#24262f] h-24 focus:outline-none focus:border-brand text-[#1d1b20] dark:text-white"
                     />
                   </div>
 

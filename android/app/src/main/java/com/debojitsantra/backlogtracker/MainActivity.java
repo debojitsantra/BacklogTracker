@@ -6,15 +6,18 @@ import androidx.activity.OnBackPressedCallback;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private final TextMenuBridge textMenuBridge = new TextMenuBridge();
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(DownloadPlugin.class);
         super.onCreate(savedInstanceState);
-        // The WebView action mode shows a large branded context panel when text is long-pressed.
-        // This app intentionally disables text selection and copying, so consume long presses too.
-        bridge.getWebView().setLongClickable(false);
-        bridge.getWebView().setOnLongClickListener(view -> true);
+        // Suppress branded WebView selection UI except for JSON text areas, where Android's
+        // normal cut/copy/paste menu is needed.
+        bridge.getWebView().setLongClickable(true);
+        bridge.getWebView().setOnLongClickListener(view -> !textMenuBridge.isEnabled());
         bridge.getWebView().addJavascriptInterface(new BackButtonBridge(), "AndroidBackHandler");
+        bridge.getWebView().addJavascriptInterface(textMenuBridge, "AndroidTextMenu");
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -43,6 +46,19 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void exitApp() {
             runOnUiThread(() -> finishAndRemoveTask());
+        }
+    }
+
+    private static class TextMenuBridge {
+        private volatile boolean enabled;
+
+        @JavascriptInterface
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isEnabled() {
+            return enabled;
         }
     }
 }

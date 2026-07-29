@@ -56,6 +56,12 @@ body, body *, input, textarea, select {
   -webkit-touch-callout: none;
 }
 
+.allow-native-text-menu {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 button, input, select, textarea {
   touch-action: manipulation;
 }

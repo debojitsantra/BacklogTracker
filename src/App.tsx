@@ -35,6 +35,7 @@ function DeferredScreen({ children }: { children: React.ReactNode }) {
 declare global {
   interface Window {
     AndroidBackHandler?: { exitApp: () => void };
+    AndroidTextMenu?: { setEnabled: (enabled: boolean) => void };
   }
 }
 
@@ -629,6 +630,10 @@ export default function App() {
         {helpModalOpen && <DeferredScreen><HelpModal isOpen={helpModalOpen} onClose={closeHelpModal} context="setup" /></DeferredScreen>}
         <DeferredScreen><SetupWizard
           initialData={data}
+          onOpenHelp={() => {
+            setHelpContext('setup');
+            setHelpModalOpen(true);
+          }}
           onSave={handleSaveData}
           onCancel={data.setup_done ? () => {
             const saved = localStorage.getItem('backlog_tracker_data');

@@ -26,6 +26,7 @@ interface SetupWizardProps {
   onSave: (data: AppData) => void;
   onCancel?: () => void;
   onImportCourseDesign?: (importedData: AppData) => void;
+  onOpenHelp?: () => void;
 }
 
 const WEEK_DAYS = [
@@ -99,7 +100,7 @@ function resolveScheduleConflicts(importedData: AppData): AppData {
   return { ...importedData, subjects };
 }
 
-export default function SetupWizard({ initialData, onSave, onCancel, onImportCourseDesign }: SetupWizardProps) {
+export default function SetupWizard({ initialData, onSave, onCancel, onImportCourseDesign, onOpenHelp }: SetupWizardProps) {
   const [courseName, setCourseName] = useState(initialData.course_name || 'My Backlog Tracker');
   const [classesPerDay, setClassesPerDay] = useState(initialData.classes_per_day || 4);
   const [skipSunday, setSkipSunday] = useState(initialData.skip_sunday !== false);
@@ -686,33 +687,38 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setShowImportPanel(!showImportPanel);
-              if (showImportPanel) {
-                setImportText('');
-                setImportValidation(null);
-              }
-            }}
-            className={`text-xs font-bold px-3.5 py-1.5 rounded-full border transition-all flex items-center gap-1 cursor-pointer ${showImportPanel
-              ? 'text-[#ba1a1a] dark:text-red-400 bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
-              : 'text-brand bg-brand-container hover:bg-brand-container-hover border-[#cac4d0]/25 dark:border-brand-container'
-              }`}
-            style={{ minHeight: '36px' }}
-          >
-            {showImportPanel ? (
-              <>
-                <X className="w-3.5 h-3.5" />
-                <span>Close Import</span>
-              </>
-            ) : (
-              <>
-                <Upload className="w-3.5 h-3.5" />
-                <span>Import JSON</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              className="text-xs font-bold px-3 py-1.5 rounded-full border transition-all flex items-center gap-1 cursor-pointer text-brand bg-brand-container hover:bg-brand-container-hover border-[#cac4d0]/25 dark:border-brand-container"
+              style={{ minHeight: '36px' }}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Help</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowImportPanel(!showImportPanel);
+                if (showImportPanel) {
+                  setImportText('');
+                  setImportValidation(null);
+                }
+              }}
+              className={`text-xs font-bold px-3.5 py-1.5 rounded-full border transition-all flex items-center gap-1 cursor-pointer ${showImportPanel
+                ? 'text-[#ba1a1a] dark:text-red-400 bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
+                : 'text-brand bg-brand-container hover:bg-brand-container-hover border-[#cac4d0]/25 dark:border-brand-container'
+                }`}
+              style={{ minHeight: '36px' }}
+            >
+              {showImportPanel ? (
+                <><X className="w-3.5 h-3.5" /><span>Close Import</span></>
+              ) : (
+                <><Upload className="w-3.5 h-3.5" /><span>Import JSON</span></>
+              )}
+            </button>
+          </div>
         </div>
 
         <AnimatePresence>
@@ -765,7 +771,9 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                       setImportValidation(null);
                     }}
                     placeholder='{ "schemaVersion": 1, "title": "...", "items": { ... } }'
-                    className="bg-white/70 dark:bg-[#111318]/50 text-xs font-mono p-3 rounded-xl border border-[#cac4d0]/40 dark:border-[#24262f] h-24 focus:outline-none focus:border-brand text-[#1d1b20] dark:text-white resize-none"
+                    onFocus={() => window.AndroidTextMenu?.setEnabled(true)}
+                    onBlur={() => window.AndroidTextMenu?.setEnabled(false)}
+                    className="allow-native-text-menu bg-white/70 dark:bg-[#111318]/50 text-xs font-mono p-3 rounded-xl border border-[#cac4d0]/40 dark:border-[#24262f] h-24 focus:outline-none focus:border-brand text-[#1d1b20] dark:text-white resize-none"
                   />
                 </div>
 
