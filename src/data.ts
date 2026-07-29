@@ -61,9 +61,6 @@ import { getLocalDateString } from './utils/date';
   "Losing an hour in the morning can put the whole day behind. — Richard Cecil",
   "If you wait, all that happens is you get older. — Larry McMurtry",
   "The only limit to our realization of tomorrow is our doubts of today. — Franklin D. Roosevelt",
-] 
-   
-  
 ];
 
 export const PRESET_SUBJECTS: Record<string, { emoji: string; color: string }> = {
