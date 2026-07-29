@@ -44,6 +44,8 @@ Source Repository: [Github](https://github.com/debojitsantra/BacklogTracker-Temp
   <img src="assets/images/Screenshots/2.png" width="45%" alt="Screenshot D 2" />
   <img src="assets/images/Screenshots/3.png" width="45%" alt="Screenshot D 3" />
   <img src="assets/images/Screenshots/4.png" width="45%" alt="Screenshot D 4" />
+  <img src="assets/images/Screenshots/5.png" width="45%" alt="Screenshot D 5" />
+  <img src="assets/images/Screenshots/6.png" width="45%" alt="Screenshot D 6" />
 </p>
 
 ## Tech Stack
