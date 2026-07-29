@@ -34,4 +34,6 @@ export interface AppData {
   palette_color?: string;
   auto_growth_enabled?: boolean;
   custom_presets?: CustomPreset[];
+  /** User-edited versions of the built-in Study, Gaming, and Work presets. */
+  preset_overrides?: Record<string, Subject[]>;
 }

@@ -2,19 +2,20 @@
 set -e
 
 echo "==> Installing prerequisites"
-sudo pacman -Sy --noconfirm --needed base-devel wget unzip curl git
+sudo apt update
+sudo apt install -y build-essential wget unzip curl git
 
 echo "==> Installing Java 21"
-sudo pacman -S --noconfirm --needed jdk21-openjdk
+sudo apt install -y openjdk-21-jdk
 
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 export PATH=$JAVA_HOME/bin:$PATH
+
 echo "==> Java version: $(java -version 2>&1 | head -1)"
 
 echo "==> Installing nvm"
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
 
-# nvm's installer doesn't export itself into the current shell -- source it manually
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
@@ -36,18 +37,22 @@ yes | sdkmanager --licenses > /dev/null 2>&1
 sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
 echo "==> Persisting env vars to ~/.bashrc"
-grep -qxF 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk' ~/.bashrc || \
-  echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk' >> ~/.bashrc
+grep -qxF 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' ~/.bashrc || \
+  echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' >> ~/.bashrc
 grep -qxF 'export ANDROID_HOME=$HOME/android-sdk' ~/.bashrc || \
   echo 'export ANDROID_HOME=$HOME/android-sdk' >> ~/.bashrc
 grep -qxF 'export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH' ~/.bashrc || \
   echo 'export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH' >> ~/.bashrc
 
-cd $HOME/BacklogTracker
+cd ~
+cd BacklogTracker
+
 echo "==> Installing npm dependencies"
 npm ci
+
 echo "==> Building web assets"
 npm run build
+
 echo "==> Syncing Capacitor"
 npx cap sync android
 

@@ -24,6 +24,7 @@ import {
   FileJson,
   User,
   Github,
+  Heart,
   Award,
   HelpCircle
 } from 'lucide-react';
@@ -463,14 +464,25 @@ export default function SettingsModal({
 
 
                   <a
-                    href="https://github.com/debojitsantra"
+                    href="https://github.com/debojitsantra/BacklogTracker"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex-1 bg-brand-container hover:bg-brand-container-hover p-3 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60 flex items-center justify-center gap-2 cursor-pointer transition-all text-xs font-bold text-brand text-center"
                     style={{ minHeight: '44px' }}
                   >
                     <Github className="w-4 h-4" />
-                    <span>github.com/debojitsantra</span>
+                    <span>View source</span>
+                  </a>
+
+                  <a
+                    href="https://donate.110010101.xyz"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 bg-brand-container hover:bg-brand-container-hover p-3 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60 flex items-center justify-center gap-2 cursor-pointer transition-all text-xs font-bold text-brand text-center"
+                    style={{ minHeight: '44px' }}
+                  >
+                    <Heart className="w-4 h-4" />
+                    <span>Donate</span>
                   </a>
                 </div>
               </div>

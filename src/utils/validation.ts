@@ -263,6 +263,33 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     cleanData.custom_presets = presets;
   }
 
+  if (parsed.preset_overrides !== undefined) {
+    if (!parsed.preset_overrides || typeof parsed.preset_overrides !== 'object' || Array.isArray(parsed.preset_overrides)) {
+      return { success: false, error: 'Invalid preset_overrides. Expected an object.' };
+    }
+    const overrides: Record<string, Subject[]> = {};
+    for (const [key, rawEntries] of Object.entries(parsed.preset_overrides)) {
+      if (!Array.isArray(rawEntries)) {
+        return { success: false, error: `Preset override "${key}" must contain an entries list.` };
+      }
+      const entries = rawEntries.filter((entry): entry is Subject => {
+        return Boolean(entry) && typeof entry === 'object' && typeof entry.name === 'string' && entry.name.trim().length > 0 &&
+          typeof entry.emoji === 'string' && typeof entry.color === 'string' && HEX_COLOR.test(entry.color) &&
+          Number.isFinite(entry.backlog) && entry.backlog >= 0 && Number.isFinite(entry.daily_increase) && entry.daily_increase >= 0;
+      }).map(entry => ({
+        ...entry,
+        name: entry.name.trim(),
+        emoji: entry.emoji.trim() || '📚',
+        repeat_days: entry.repeat_days?.filter(day => VALID_REPEAT_DAYS.has(day))
+      }));
+      if (entries.length !== rawEntries.length) {
+        return { success: false, error: `Preset override "${key}" contains an invalid entry.` };
+      }
+      overrides[key] = entries;
+    }
+    cleanData.preset_overrides = overrides;
+  }
+
   if (!isFullBackup) {
     Object.keys(cleanData.subjects).forEach(key => {
       cleanData.subjects[key].backlog = cleanData.subjects[key].completion_mode === 'todo' ? 1 : 0;

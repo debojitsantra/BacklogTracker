@@ -10,6 +10,10 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(DownloadPlugin.class);
         super.onCreate(savedInstanceState);
+        // The WebView action mode shows a large branded context panel when text is long-pressed.
+        // This app intentionally disables text selection and copying, so consume long presses too.
+        bridge.getWebView().setLongClickable(false);
+        bridge.getWebView().setOnLongClickListener(view -> true);
         bridge.getWebView().addJavascriptInterface(new BackButtonBridge(), "AndroidBackHandler");
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override

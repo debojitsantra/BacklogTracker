@@ -123,6 +123,16 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     // The separate cache is only for older app data saved before presets existed.
     return initialData.custom_presets !== undefined ? initialData.custom_presets : stored;
   });
+  const [presetOverrides, setPresetOverrides] = useState<Record<string, Subject[]>>(() => {
+    if (initialData.preset_overrides !== undefined) return initialData.preset_overrides;
+    try {
+      const stored = localStorage.getItem('backlog_tracker_preset_overrides');
+      const parsed = stored ? JSON.parse(stored) : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
   const [isNamingCustomCategory, setIsNamingCustomCategory] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [addingCustomName, setAddingCustomName] = useState(false);
@@ -289,6 +299,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
   const selectTrackingType = (key: string) => {
     const template = TRACKING_TYPES[key];
     setActiveTrackType(key);
+    setActiveCustomPresetId(null);
     setAddingCustomName(false);
     setNewCustomName('');
 
@@ -306,7 +317,10 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
 
     if (!template) return;
 
-    const newSubs: typeof customSubjects = template.entries.map((entry, index) => ({
+    const savedEntries = presetOverrides[key];
+    const newSubs: typeof customSubjects = savedEntries
+      ? savedEntries.map(entry => ({ ...entry, repeat_days: entry.repeat_days ? [...entry.repeat_days] : undefined }))
+      : template.entries.map((entry, index) => ({
       name: entry.name,
       emoji: entry.emoji,
       color: entry.color || PALETTE[index % PALETTE.length],
@@ -315,7 +329,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       perday_type: 'tasks',
       growth_mode: 'none' as const,
       completion_mode: (entry.completion_mode || 'backlog') as 'todo' | 'backlog'
-    }));
+      }));
     setCustomSubjects(newSubs);
     if (courseName === 'My Backlog Tracker' || Object.values(TRACKING_TYPES).some(item => item.title === courseName)) {
       setCourseName(template.title);
@@ -355,6 +369,20 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     setActiveCustomPresetId(preset.id);
     setCustomPresets(updated);
     localStorage.setItem('backlog_tracker_custom_presets', JSON.stringify(updated));
+  };
+
+  const savePresetOverride = (key: string, entries: Subject[]) => {
+    if (!TRACKING_TYPES[key] || key === 'custom') return;
+    const usableEntries = entries
+      .filter(entry => entry.name.trim())
+      .map(entry => ({ ...entry, name: entry.name.trim(), repeat_days: entry.repeat_days ? [...entry.repeat_days] : undefined }));
+    if (usableEntries.length > 0) {
+      setPresetOverrides(previous => {
+        const updated = { ...previous, [key]: usableEntries };
+        localStorage.setItem('backlog_tracker_preset_overrides', JSON.stringify(updated));
+        return updated;
+      });
+    }
   };
 
   const addCustomRow = () => {
@@ -635,7 +663,8 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       theme: initialData.theme || 'dark',
       palette_color: initialData.palette_color,
       auto_growth_enabled: autoGrowthEnabled,
-      custom_presets: updatedCustomPresets
+      custom_presets: updatedCustomPresets,
+      preset_overrides: presetOverrides
     });
   };
 
@@ -1443,7 +1472,11 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                         }
                       }
 
-                      saveCustomPreset(editingSubjects);
+                      if (activeTrackType === 'custom') {
+                        saveCustomPreset(editingSubjects);
+                      } else if (activeTrackType) {
+                        savePresetOverride(activeTrackType, editingSubjects);
+                      }
 
                       setEditorOpen(false);
                       cancelCustomNamedRow();

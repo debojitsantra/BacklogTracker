@@ -53,6 +53,7 @@ html {
 body, body *, input, textarea, select {
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
 }
 
 button, input, select, textarea {

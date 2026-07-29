@@ -111,6 +111,7 @@ export default function App() {
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
+  const [helpContext, setHelpContext] = useState<'setup' | 'dashboard'>('dashboard');
   const [showQuotes, setShowQuotes] = useState<boolean>(() => {
     const saved = localStorage.getItem('show_quotes');
     return saved !== 'false';
@@ -122,13 +123,28 @@ export default function App() {
   };
 
   const closeHelpModal = () => {
-    localStorage.setItem('backlog_tracker_help_seen', 'true');
+    localStorage.setItem(
+      helpContext === 'setup' ? 'backlog_tracker_setup_help_seen' : 'backlog_tracker_help_seen',
+      'true'
+    );
     setHelpModalOpen(false);
   };
 
   useEffect(() => {
+    if (!wizardOpen || localStorage.getItem('backlog_tracker_setup_help_seen') === 'true') return;
+    const timer = window.setTimeout(() => {
+      setHelpContext('setup');
+      setHelpModalOpen(true);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [wizardOpen]);
+
+  useEffect(() => {
     if (wizardOpen || localStorage.getItem('backlog_tracker_help_seen') === 'true') return;
-    const timer = window.setTimeout(() => setHelpModalOpen(true), 300);
+    const timer = window.setTimeout(() => {
+      setHelpContext('dashboard');
+      setHelpModalOpen(true);
+    }, 300);
     return () => window.clearTimeout(timer);
   }, [wizardOpen]);
 
@@ -610,6 +626,7 @@ export default function App() {
   if (wizardOpen) {
     return (
       <>
+        {helpModalOpen && <DeferredScreen><HelpModal isOpen={helpModalOpen} onClose={closeHelpModal} context="setup" /></DeferredScreen>}
         <DeferredScreen><SetupWizard
           initialData={data}
           onSave={handleSaveData}
@@ -986,6 +1003,7 @@ export default function App() {
           }}
           onOpenHelp={() => {
             setSettingsModalOpen(false);
+            setHelpContext('dashboard');
             setHelpModalOpen(true);
           }}
         /></DeferredScreen>
