@@ -56,6 +56,15 @@ function getGrowthMode(subject: Subject): 'none' | 'perday' | 'repeat' {
   return subject.growth_mode || (subject.repeat_days?.length ? 'repeat' : growth > 0 ? 'perday' : 'none');
 }
 
+function splitQuoteAttribution(quote: string): { text: string; author: string | null } {
+  const divider = quote.lastIndexOf(' — ');
+  if (divider === -1) return { text: quote, author: null };
+  return {
+    text: quote.slice(0, divider),
+    author: quote.slice(divider + 3)
+  };
+}
+
 function getGrowthForDate(subject: Subject, date: Date): number {
   const growth = subject.daily_increase ?? 0;
   if (growth <= 0) return 0;
@@ -187,6 +196,7 @@ export default function App() {
   }, [data.palette_color, darkMode]);
 
   const [currentQuote, setCurrentQuote] = useState(MOTIVATIONAL_QUOTES[0]);
+  const displayedQuote = splitQuoteAttribution(currentQuote);
   const autoGrowthEnabled = data.auto_growth_enabled !== false;
 
   const [offlineSyncReport, setOfflineSyncReport] = useState<{
@@ -741,8 +751,9 @@ export default function App() {
               <span className="text-[10px] text-brand uppercase tracking-wider font-extrabold block mb-1">
                 Daily Nudge
               </span>
-              <p className="text-xs sm:text-sm text-[#1d1b20] dark:text-white italic font-semibold leading-relaxed">
-                "{currentQuote}"
+              <p className="text-xs sm:text-sm text-[#1d1b20] dark:text-white font-semibold leading-relaxed">
+                “{displayedQuote.text}”
+                {displayedQuote.author && <><span aria-hidden="true"> — </span><span className="italic">{displayedQuote.author}</span></>}
               </p>
             </div>
           </section>
