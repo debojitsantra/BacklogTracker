@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
-    "@capacitor/core": "^8.4.1",
+    "@capacitor/core": "^8.4.2",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/share": "^8.0.1",
     "@vitejs/plugin-react": "^5.0.4",
