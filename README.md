@@ -57,18 +57,31 @@ Source Repository: [Github](https://github.com/debojitsantra/BacklogTracker-Temp
 - Tailwind CSS v4
 - Motion
 - Capacitor for android
-- Pake for desktop packaging
+- Tauri for desktop packaging
 
 ## Install
 
-Download latest github release for your platform:
+Download the latest GitHub release for your platform:
 
-| Platform | Download |
-|----------|----------|
-| Windows  | [BacklogTracker-windows.zip](https://github.com/debojitsantra/BacklogTracker/releases/) |
-| Linux    | [BacklogTracker-linux.zip](https://github.com/debojitsantra/BacklogTracker/releases/) |
-| macOS    | [BacklogTracker-macos.zip](https://github.com/debojitsantra/BacklogTracker/releases/) *(untested)* |
-| Android  | [BacklogTracker.apk](https://github.com/debojitsantra/BacklogTracker/releases/) |
+| Platform | Format / Install Options |
+|----------|--------------------------|
+| Windows  | [Setup.exe](https://github.com/debojitsantra/BacklogTracker/releases/), [MSI](https://github.com/debojitsantra/BacklogTracker/releases/) |
+| Linux    | [APT Repository](#debianubuntu-apt-repository), [DEB](https://github.com/debojitsantra/BacklogTracker/releases/), [RPM](https://github.com/debojitsantra/BacklogTracker/releases/), [AppImage](https://github.com/debojitsantra/BacklogTracker/releases/) |
+| macOS    | [DMG (aarch64)](https://github.com/debojitsantra/BacklogTracker/releases/) *(untested)* |
+| Android  | [APK](https://github.com/debojitsantra/BacklogTracker/releases/) |
+
+### Debian/Ubuntu APT Repository
+
+```bash
+curl -fsSL https://apt.110010101.xyz/public.key | \
+sudo gpg --dearmor -o /usr/share/keyrings/backlogtracker.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/backlogtracker.gpg] https://apt.110010101.xyz stable main" | \
+sudo tee /etc/apt/sources.list.d/backlogtracker.list
+
+sudo apt update
+sudo apt install backlog-tracker
+```
 
 
 ## App Stores
@@ -129,17 +142,23 @@ Run from Android Studio, or use Gradle from the `android` directory.
 ## Desktop Builds
 
 
-```text
-.github/workflows/desktop.yml
-```
+### Prerequisites
 
-It builds Linux, Windows, and macOS desktop packages from the local Vite output using `--use-local-file`.
+- Node.js 22 or newer
+- Rust and Cargo
+
+### Build Steps
+
+```bash
+npm ci
+npm run tauri:build
+```
 
 
 ## GitHub Actions
 
 - `.github/workflows/build.yml` builds the signed Android release APK on version tags.
-- `.github/workflows/desktop.yml` builds Linux, Windows, and macOS desktop artifacts with Pake.
+- `.github/workflows/desktop.yml` builds Linux, Windows, and macOS desktop artifacts with Tauri.
 
 
 
