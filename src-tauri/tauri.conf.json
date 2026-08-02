@@ -1,0 +1,53 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Backlog Tracker",
+  "version": "1.2.3",
+  "identifier": "com.debojitsantra.backlogtracker",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Backlog Tracker",
+        "width": 800,
+        "height": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "Debojit Santra",
+    "category": "Utility",
+    "shortDescription": "Track and eliminate study backlogs.",
+    "longDescription": "Backlog Tracker helps students organize, prioritize, and clear study backlogs with analytics and scheduling.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "deb": {
+        "section": "utils"
+      }
+    },
+    "windows": {
+      "wix": {},
+      "nsis": {}
+    },
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    }
+  }
+}

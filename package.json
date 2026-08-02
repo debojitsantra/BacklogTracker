@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "backlog-tracker",
   "private": true,
   "version": "1.2.3",
   "type": "module",
@@ -8,13 +8,17 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('server.js',{force:true})\"",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+     "tauri:build": "tauri build"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/share": "^8.0.1",
+    "@tauri-apps/api": "^2.11.1",
     "@vitejs/plugin-react": "^5.0.4",
     "emoji-picker-react": "^4.19.1",
     "lucide-react": "^0.546.0",
@@ -26,6 +30,7 @@
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.4.1",
     "@tailwindcss/vite": "^4.3.2",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",

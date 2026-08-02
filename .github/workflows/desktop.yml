@@ -10,30 +10,50 @@ permissions:
   contents: read
 
 jobs:
-  linux:
-    name: Build Linux Desktop App
-    runs-on: ubuntu-22.04
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-22.04
+            artifact: BacklogTracker-linux
+            paths: |
+              src-tauri/target/release/bundle/deb/*.deb
+              src-tauri/target/release/bundle/rpm/*.rpm
+              src-tauri/target/release/bundle/appimage/*.AppImage
+
+          - name: Windows
+            os: windows-latest
+            artifact: BacklogTracker-windows
+            paths: |
+              src-tauri/target/release/bundle/msi/*.msi
+              src-tauri/target/release/bundle/nsis/*.exe
+
+          - name: macOS
+            os: macos-latest
+            artifact: BacklogTracker-macos
+            paths: |
+              src-tauri/target/release/bundle/dmg/*.dmg
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Vite app
-        run: npm run build
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux build dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -46,152 +66,49 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            libfuse2 \
             patchelf
 
-      - name: Install Pake CLI
-        run: npm install -g pake-cli
-
-      - name: Build desktop app
-        run: pake ./dist/index.html --name "Backlog Tracker" --width 900 --height 700 --use-local-file --icon ./public/app_logo.png
-
-      - name: Collect Linux artifacts
-        shell: bash
-        run: |
-          mkdir -p desktop-artifacts
-          find . -maxdepth 8 -type f \( -name "*.AppImage" -o -name "*.deb" \) -not -path "./node_modules/*" -exec cp {} desktop-artifacts/ \;
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BacklogTracker-linux
-          path: desktop-artifacts/*
-          if-no-files-found: error
-
-  windows:
-    name: Build Windows Desktop App
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Vite app
-        run: npm run build
+      - name: Build desktop application
+        run: npm run tauri:build
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Pake CLI
-        run: npm install -g pake-cli
-
-      - name: Build desktop app
-        run: pake ./dist/index.html --name "Backlog Tracker" --width 900 --height 700 --use-local-file --icon ./public/app_logo.png
-
-      - name: Collect Windows artifacts
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path desktop-artifacts
-          Get-ChildItem -Recurse -File -Include *.msi |
-            Where-Object { $_.FullName -notmatch '\\node_modules\\' } |
-            Copy-Item -Destination desktop-artifacts
-
-      - name: Upload Windows artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BacklogTracker-windows
-          path: desktop-artifacts/*
-          if-no-files-found: error
-
-  macos:
-    name: Build macOS Desktop App
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Vite app
-        run: npm run build
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Pake CLI
-        run: npm install -g pake-cli
-
-      - name: Build desktop app
-        run: pake ./dist/index.html --name "Backlog Tracker" --width 900 --height 700 --use-local-file --icon ./public/app_logo.png
-
-      - name: Collect macOS artifacts
-        shell: bash
-        run: |
-          mkdir -p desktop-artifacts
-          find . -maxdepth 8 -type f -name "*.dmg" -not -path "./node_modules/*" -exec cp {} desktop-artifacts/ \;
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: BacklogTracker-macos
-          path: desktop-artifacts/*
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.paths }}
           if-no-files-found: error
 
   release:
-    name: Upload Desktop Release Assets
-    needs: [linux, windows, macos]
+    name: Publish GitHub Release
     runs-on: ubuntu-latest
+    needs: build
+
     permissions:
       contents: write
 
     steps:
-      - name: Download desktop artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release-artifacts
           pattern: BacklogTracker-*
           merge-multiple: true
+          path: release-packages
 
-      - name: Extract desktop release packages
-        shell: bash
-        run: |
-          mkdir -p release-packages
-          find release-artifacts -type f \( \
-            -name "*.msi" -o \
-            -name "*.deb" -o \
-            -name "*.AppImage" -o \
-            -name "*.dmg" \
-          \) -exec cp {} release-packages/ \;
-
-          test -n "$(find release-packages -maxdepth 1 -type f -print -quit)"
-
-      - name: Upload packages to GitHub Release
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release-packages/*.msi
-            release-packages/*.deb
-            release-packages/*.AppImage
-            release-packages/*.dmg
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
+          files: |
+            release-packages/**/*.deb
+            release-packages/**/*.rpm
+            release-packages/**/*.AppImage
+            release-packages/**/*.msi
+            release-packages/**/*.exe
+            release-packages/**/*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

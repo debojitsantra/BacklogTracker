@@ -1,0 +1,25 @@
+[package]
+name = "backlog-tracker"
+version = "1.2.3"
+description = "A cross platform application to track anything that piles up: study backlogs, work queues, games, habits, routines, or custom pending lists."
+authors = ["Debojit Santra <debojitsantra@proton.me>"]
+license = "Apache-2.0"
+repository = "https://github.com/debojitsantra/BacklogTracker"
+edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.11.3", features = [] }
+tauri-plugin-log = "2"
