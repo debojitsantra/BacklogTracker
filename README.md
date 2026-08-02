@@ -65,8 +65,8 @@ Download the latest GitHub release for your platform:
 
 | Platform | Format / Install Options |
 |----------|--------------------------|
-| Windows  | [Setup.exe](https://github.com/debojitsantra/BacklogTracker/releases/), [MSI](https://github.com/debojitsantra/BacklogTracker/releases/) |
-| Linux    | [APT Repository](#debianubuntu-apt-repository), [DEB](https://github.com/debojitsantra/BacklogTracker/releases/), [RPM](https://github.com/debojitsantra/BacklogTracker/releases/), [AppImage](https://github.com/debojitsantra/BacklogTracker/releases/) |
+| Windows  | [Winget](#windows-winget), [Setup.exe](https://github.com/debojitsantra/BacklogTracker/releases/), [MSI](https://github.com/debojitsantra/BacklogTracker/releases/) |
+| Linux    | [APT Repository](#debianubuntu-apt-repository), [RPM Repository](#fedora-rpm-repository), [DEB](https://github.com/debojitsantra/BacklogTracker/releases/), [RPM](https://github.com/debojitsantra/BacklogTracker/releases/), [AppImage](https://github.com/debojitsantra/BacklogTracker/releases/) |
 | macOS    | [DMG (aarch64)](https://github.com/debojitsantra/BacklogTracker/releases/) *(untested)* |
 | Android  | [APK](https://github.com/debojitsantra/BacklogTracker/releases/) |
 
@@ -81,6 +81,21 @@ sudo tee /etc/apt/sources.list.d/debojitpackages.list
 
 sudo apt update
 sudo apt install backlog-tracker
+```
+
+### Fedora RPM Repository
+
+```bash
+sudo curl -o /etc/yum.repos.d/debojitsantra.repo https://rpm.110010101.xyz/debojitsantra.repo
+sudo dnf install -y https://rpm.110010101.xyz/public.key
+
+sudo dnf install backlog-tracker
+```
+
+### Windows Winget
+
+```powershell
+winget install DebojitSantra.BacklogTracker
 ```
 
 
