@@ -91,13 +91,13 @@ sudo dnf install -y https://rpm.110010101.xyz/public.key
 
 sudo dnf install backlog-tracker
 ```
-
+<!--
 ### Windows Winget
 
 ```powershell
 winget install DebojitSantra.BacklogTracker
 ```
-
+-->
 
 ## App Stores
 
