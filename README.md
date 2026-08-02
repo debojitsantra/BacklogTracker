@@ -74,10 +74,10 @@ Download the latest GitHub release for your platform:
 
 ```bash
 curl -fsSL https://apt.110010101.xyz/public.key | \
-sudo gpg --dearmor -o /usr/share/keyrings/backlogtracker.gpg
+sudo gpg --dearmor -o /usr/share/keyrings/debojitpackages.gpg
 
-echo "deb [signed-by=/usr/share/keyrings/backlogtracker.gpg] https://apt.110010101.xyz stable main" | \
-sudo tee /etc/apt/sources.list.d/backlogtracker.list
+echo "deb [signed-by=/usr/share/keyrings/debojitpackages.gpg] https://apt.110010101.xyz stable main" | \
+sudo tee /etc/apt/sources.list.d/debojitpackages.list
 
 sudo apt update
 sudo apt install backlog-tracker
