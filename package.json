@@ -24,7 +24,7 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.42.2",
     "react": "^19.0.1",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
@@ -33,7 +33,7 @@
     "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.16",
-    "@types/react-dom": "^19.2.3",
+    "@types/react-dom": "^19.2.4",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.28.0",
     "tailwindcss": "^4.3.2",
