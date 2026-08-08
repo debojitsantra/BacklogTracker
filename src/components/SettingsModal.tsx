@@ -52,7 +52,13 @@ const COLOR_PRESETS = [
   { name: 'Crimson Fire', hex: '#ba1a1a' },
   { name: 'Ocean Blue', hex: '#0277bd' },
   { name: 'Sunset Orange', hex: '#d84315' },
-  { name: 'Emerald Green', hex: '#2e7d32' }
+  { name: 'Emerald Green', hex: '#2e7d32' },
+  { name: 'Royal Violet', hex: '#7b1fa2' },
+  { name: 'Deep Indigo', hex: '#3f51b5' },
+  { name: 'Rose Pink', hex: '#d81b60' },
+  { name: 'Golden Amber', hex: '#ff8f00' },
+  { name: 'Soot Black', hex: '#111111' },
+  { name: 'Charred Cinder', hex: '#000000' }
 ];
 
 // Register the custom native Download plugin
@@ -318,8 +324,8 @@ export default function SettingsModal({
                 <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">App Layout Theme</label>
                 <div className="flex items-center justify-between p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
                   <div className="flex flex-col">
-                    <span className="text-xs font-bold">Dark mode view state</span>
-                    <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Toggle between standard dark mode and light theme</span>
+                    <span className="text-xs font-bold">Dark mode</span>
+                    <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Toggle between dark mode and light theme</span>
                   </div>
                   <button
                     onClick={() => onToggleDarkMode(!darkMode)}

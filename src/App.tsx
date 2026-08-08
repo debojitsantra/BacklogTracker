@@ -186,16 +186,38 @@ export default function App() {
   useEffect(() => {
     const color = data.palette_color || '#6750a4';
     const root = document.documentElement;
-    root.style.setProperty('--brand', color);
 
-    if (darkMode) {
-      root.style.setProperty('--brand-container', '#24262f');
-      root.style.setProperty('--brand-container-hover', '#2d303a');
-      root.style.setProperty('--brand-text', color);
+    if (color === '#000000') {
+      root.style.setProperty('filter', 'grayscale(100%)');
     } else {
-      root.style.setProperty('--brand-container', color + '15');
-      root.style.setProperty('--brand-container-hover', color + '28');
-      root.style.setProperty('--brand-text', color);
+      root.style.removeProperty('filter');
+    }
+
+    if (color === '#000000' || color === '#111111') {
+      if (darkMode) {
+        root.style.setProperty('--brand', '#ffffff');
+        root.style.setProperty('--brand-container', '#24262f');
+        root.style.setProperty('--brand-container-hover', '#2d303a');
+        root.style.setProperty('--brand-text', '#ffffff');
+      } else {
+        const brandColor = color === '#000000' ? '#000000' : '#111111';
+        root.style.setProperty('--brand', brandColor);
+        root.style.setProperty('--brand-container', brandColor + '15');
+        root.style.setProperty('--brand-container-hover', brandColor + '28');
+        root.style.setProperty('--brand-text', brandColor);
+      }
+    } else {
+      root.style.setProperty('--brand', color);
+
+      if (darkMode) {
+        root.style.setProperty('--brand-container', '#24262f');
+        root.style.setProperty('--brand-container-hover', '#2d303a');
+        root.style.setProperty('--brand-text', color);
+      } else {
+        root.style.setProperty('--brand-container', color + '15');
+        root.style.setProperty('--brand-container-hover', color + '28');
+        root.style.setProperty('--brand-text', color);
+      }
     }
   }, [data.palette_color, darkMode]);
 
