@@ -6,7 +6,69 @@
     <title>Backlog Tracker</title>
     <link rel="icon" type="image/svg+xml" href="./assets/icon.svg" />
     <link rel="apple-touch-icon" href="./assets/icon.svg" />
-    <style>html,body,#root{margin:0;min-height:100%;background:#111318}</style>
+    <style>
+      html {
+        background-color: #111318;
+      }
+      body {
+        margin: 0;
+        min-height: 100%;
+        background-color: inherit;
+      }
+      #root {
+        margin: 0;
+        min-height: 100%;
+        background-color: transparent;
+      }
+    </style>
+    <script>
+      (function() {
+        try {
+          const savedDarkMode = localStorage.getItem('darkMode');
+          const useDarkMode = savedDarkMode !== null
+            ? savedDarkMode === 'true'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.classList.toggle('dark', useDarkMode);
+          document.documentElement.style.backgroundColor = useDarkMode ? '#111318' : '#fef7ff';
+        } catch (e) {}
+      })();
+    </script>
+    <script>
+      (function() {
+        try {
+          var ua = navigator.userAgent;
+          var isAndroid = /Android/i.test(ua);
+          var chromeMatch = ua.match(/Chrome\/(\d+)/);
+          if (isAndroid && chromeMatch) {
+            var version = parseInt(chromeMatch[1], 10);
+            if (version > 0 && version < 114) {
+              window.addEventListener('DOMContentLoaded', function() {
+                var banner = document.createElement('div');
+                banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background-color:#fff3cd;color:#664d03;padding:12px 16px;text-align:center;font-family:sans-serif;font-size:14px;line-height:1.4;border-bottom:1px solid #ffe69c;box-shadow:0 2px 4px rgba(0,0,0,0.1);box-sizing:border-box;font-weight:bold;';
+                
+                var textPart1 = document.createTextNode('Your Android System WebView is outdated and may cause display issues. please update it via the ');
+                
+                var link = document.createElement('a');
+                link.href = 'https://play.google.com/store/apps/details?id=com.google.android.webview';
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.style.cssText = 'color:#0a58ca;text-decoration:underline;display:inline-block;';
+                link.textContent = 'Play Store';
+                
+                var textPart2 = document.createTextNode(', or anything you use.');
+                
+                banner.appendChild(textPart1);
+                banner.appendChild(link);
+                banner.appendChild(textPart2);
+                
+                document.body.insertBefore(banner, document.body.firstChild);
+                document.body.style.paddingTop = '60px';
+              });
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -10,7 +10,9 @@ const useDarkMode = savedDarkMode !== null
   : window.matchMedia('(prefers-color-scheme: dark)').matches;
 document.documentElement.classList.toggle('dark', useDarkMode);
 document.documentElement.style.backgroundColor = useDarkMode ? '#111318' : '#fef7ff';
-document.body.style.backgroundColor = useDarkMode ? '#111318' : '#fef7ff';
+if (document.body) {
+  document.body.style.backgroundColor = useDarkMode ? '#111318' : '#fef7ff';
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

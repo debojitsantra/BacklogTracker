@@ -162,9 +162,13 @@ export default function App() {
     if (darkMode) {
       document.documentElement.classList.add('dark');
       document.body.classList.add('dark');
+      document.documentElement.style.backgroundColor = '#111318';
+      document.body.style.backgroundColor = '#111318';
     } else {
       document.documentElement.classList.remove('dark');
       document.body.classList.remove('dark');
+      document.documentElement.style.backgroundColor = '#fef7ff';
+      document.body.style.backgroundColor = '#fef7ff';
     }
     localStorage.setItem('darkMode', String(darkMode));
   }, [darkMode]);
