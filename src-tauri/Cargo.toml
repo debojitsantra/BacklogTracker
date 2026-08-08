@@ -1,6 +1,6 @@
 [package]
 name = "backlog-tracker"
-version = "1.2.3"
+version = "1.2.4"
 description = "A cross platform application to track anything that piles up: study backlogs, work queues, games, habits, routines, or custom pending lists."
 authors = ["Debojit Santra <debojitsantra@proton.me>"]
 license = "Apache-2.0"
