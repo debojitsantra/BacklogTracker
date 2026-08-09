@@ -10,7 +10,20 @@ import { PRESET_SUBJECTS, PALETTE } from '../data';
 import { AppData, CustomPreset, Subject } from '../types';
 import { getLocalDateString } from '../utils/date';
 import { validateAndParseImport } from '../utils/validation';
-import { Plus, Trash2, Palette, Sparkles, AlertCircle, AlertTriangle, CheckCircle, Upload, X, Check, FileJson, CalendarDays, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, Palette, Sparkles, AlertCircle, AlertTriangle, CheckCircle, Upload, X, Check, FileJson, CalendarDays, HelpCircle, Clock } from 'lucide-react';
+import TimePickerModal from './TimePickerModal';
+import { requestNotificationPermission } from '../utils/notifications';
+
+const formatTimeTo12Hour = (time24: string): string => {
+  if (!time24) return '12:00 AM';
+  const [hStr, mStr] = time24.split(':');
+  const h = parseInt(hStr, 10);
+  if (isNaN(h)) return time24;
+  const period = h >= 12 ? 'PM' : 'AM';
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return `${String(h12).padStart(2, '0')}:${mStr} ${period}`;
+};
 
 const EmojiPicker = lazy(() => import('emoji-picker-react'));
 
@@ -105,6 +118,21 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
   const [classesPerDay, setClassesPerDay] = useState(initialData.classes_per_day || 4);
   const [skipSunday, setSkipSunday] = useState(initialData.skip_sunday !== false);
   const [autoGrowthEnabled, setAutoGrowthEnabled] = useState(initialData.auto_growth_enabled !== false);
+  const [notificationEnabled, setNotificationEnabled] = useState(initialData.notification_enabled !== false);
+  const [notificationTime, setNotificationTime] = useState(initialData.notification_time || '20:00');
+  const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
+
+  const handleNotificationToggle = async () => {
+    const nextVal = !notificationEnabled;
+    if (nextVal) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        alert('Permission denied. Please allow notification permission in your device/system settings to enable daily reminders.');
+        return;
+      }
+    }
+    setNotificationEnabled(nextVal);
+  };
   const [activeTrackType, setActiveTrackType] = useState<string | null>(Object.keys(initialData.subjects || {}).length ? 'custom' : null);
   const [customCategoryName, setCustomCategoryName] = useState('Custom');
   const [customCategoryEmoji, setCustomCategoryEmoji] = useState('✨');
@@ -664,6 +692,8 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       theme: initialData.theme || 'dark',
       palette_color: initialData.palette_color,
       auto_growth_enabled: autoGrowthEnabled,
+      notification_enabled: notificationEnabled,
+      notification_time: notificationTime,
       custom_presets: updatedCustomPresets,
       preset_overrides: presetOverrides
     });
@@ -924,6 +954,49 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                     className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${skipSunday ? 'translate-x-6' : 'translate-x-0'
                       }`}
                   />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-sm font-bold tracking-wide text-brand border-b border-[#cac4d0]/30 dark:border-[#24262f]/60 pb-1 uppercase">
+              Daily Reminders
+            </h2>
+
+            <div className="flex items-center justify-between bg-brand-container p-3 rounded-xl border border-[#cac4d0]/20 dark:border-brand-container/60">
+              <div className="flex flex-col pr-4">
+                <span className="text-xs font-bold text-[#1d1b20] dark:text-white">Enable Daily Reminders</span>
+                <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Get notified every day to update your backlogs.</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleNotificationToggle}
+                className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 outline-none ${notificationEnabled ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'
+                  }`}
+              >
+                <div
+                  className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${notificationEnabled ? 'translate-x-6' : 'translate-x-0'
+                    }`}
+                />
+              </button>
+            </div>
+
+            {notificationEnabled && (
+              <div className="flex flex-col sm:flex-row items-center justify-between bg-brand-container p-3 rounded-xl border border-[#cac4d0]/20 dark:border-brand-container/60 gap-3">
+                <div className="flex flex-col pr-4 text-center sm:text-left">
+                  <span className="text-xs font-bold text-[#1d1b20] dark:text-white">Set Reminder Time</span>
+                  <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Tap to choose your notification time.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsTimePickerOpen(true)}
+                  className="flex items-center gap-2 bg-white dark:bg-[#1a1c22]/40 px-3.5 py-2 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 cursor-pointer relative hover:border-brand/40 transition-all focus:outline-none"
+                >
+                  <Clock className="w-4 h-4 text-brand" />
+                  <span className="text-sm font-bold text-[#1d1b20] dark:text-white font-mono">
+                    {formatTimeTo12Hour(notificationTime)}
+                  </span>
                 </button>
               </div>
             )}
@@ -1598,6 +1671,13 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
             </div>
           )}
         </AnimatePresence>
+
+        <TimePickerModal
+          isOpen={isTimePickerOpen}
+          onClose={() => setIsTimePickerOpen(false)}
+          initialTime={notificationTime}
+          onSave={(time) => setNotificationTime(time)}
+        />
       </motion.div>
     </div>
   );

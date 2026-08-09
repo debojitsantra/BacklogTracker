@@ -1,3 +1,4 @@
+- notification support
 - add WebView version warning for old Android WebView rendering issues
 - 6 new colour themes
      - Soot Black, Charred Cinder, Royal Violet, Deep Indigo, Rose Pink, Golden Amber                                                                                                      

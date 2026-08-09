@@ -22,6 +22,8 @@ import KPICard from './components/KPICard';
 import SubjectCard from './components/SubjectCard';
 import BacklogChart from './components/BacklogChart';
 import { getCalendarDaysDifference, getLocalDateString, parseLocalDate } from './utils/date';
+import { syncScheduledNotifications, triggerDesktopNotification } from './utils/notifications';
+import { Capacitor } from '@capacitor/core';
 
 const SetupWizard = lazy(() => import('./components/SetupWizard'));
 const OfflineNotification = lazy(() => import('./components/OfflineNotification'));
@@ -220,6 +222,52 @@ export default function App() {
       }
     }
   }, [data.palette_color, darkMode]);
+
+  // Local/Native notification synchronization
+  useEffect(() => {
+    const backlogCount = Object.values(data.subjects).reduce((sum, s) => sum + (s.backlog || 0), 0);
+    syncScheduledNotifications(
+      data.notification_enabled || false,
+      data.notification_time || '20:00',
+      backlogCount
+    );
+  }, [data.notification_enabled, data.notification_time, data.subjects]);
+
+  // Desktop background notification handler
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+
+    const checkAndNotify = () => {
+      if (!data.notification_enabled || !data.notification_time) return;
+
+      const now = new Date();
+      const todayStr = now.toDateString();
+      const lastNotified = localStorage.getItem('last_notified_date');
+
+      if (lastNotified === todayStr) return;
+
+      const [targetHour, targetMinute] = data.notification_time.split(':').map(Number);
+      if (isNaN(targetHour) || isNaN(targetMinute)) return;
+
+      if (now.getHours() === targetHour && now.getMinutes() === targetMinute) {
+        localStorage.setItem('last_notified_date', todayStr);
+        const backlogCount = Object.values(data.subjects).reduce((sum, s) => sum + (s.backlog || 0), 0);
+        const bodyText = backlogCount > 0 
+          ? `You have ${backlogCount} pending backlog${backlogCount === 1 ? '' : 's'} to clear today! 🎯`
+          : "Your tracker is clear! Keep up the great work! 🌟";
+        triggerDesktopNotification(
+          "Backlog Tracker Reminder",
+          bodyText
+        );
+      }
+    };
+
+    // Run check immediately and then every 30 seconds
+    checkAndNotify();
+    const interval = setInterval(checkAndNotify, 30000);
+
+    return () => clearInterval(interval);
+  }, [data.notification_enabled, data.notification_time, data.subjects]);
 
   const [currentQuote, setCurrentQuote] = useState(MOTIVATIONAL_QUOTES[0]);
   const displayedQuote = splitQuoteAttribution(currentQuote);

@@ -216,6 +216,14 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     ? parsed.last_updated
     : getLocalDateString();
 
+  const notificationEnabled = parsed.notification_enabled !== undefined
+    ? Boolean(parsed.notification_enabled)
+    : undefined;
+
+  const notificationTime = typeof parsed.notification_time === 'string' && /^\d{2}:\d{2}$/.test(parsed.notification_time)
+    ? parsed.notification_time
+    : undefined;
+
   const cleanData: AppData = {
     subjects: validatedSubjects,
     classes_per_day: classesPerDay,
@@ -226,6 +234,8 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     theme: theme,
     palette_color: palette_color,
     auto_growth_enabled: parsed.auto_growth_enabled !== undefined ? Boolean(parsed.auto_growth_enabled) : true,
+    notification_enabled: notificationEnabled,
+    notification_time: notificationTime,
   };
 
   if (parsed.custom_presets !== undefined) {

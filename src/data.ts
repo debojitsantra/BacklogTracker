@@ -96,5 +96,7 @@ export const DEFAULT_DATA = {
   last_updated: getLocalDateString(),
   setup_done: false,
   theme: "dark" as const,
-  auto_growth_enabled: true
+  auto_growth_enabled: true,
+  notification_enabled: false,
+  notification_time: "20:00"
 };
