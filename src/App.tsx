@@ -249,7 +249,13 @@ export default function App() {
       const [targetHour, targetMinute] = data.notification_time.split(':').map(Number);
       if (isNaN(targetHour) || isNaN(targetMinute)) return;
 
-      if (now.getHours() === targetHour && now.getMinutes() === targetMinute) {
+      // Desktop timers can be throttled while the window is hidden or asleep.
+      // Deliver once the scheduled time has passed instead of requiring the
+      // interval to run during that exact minute.
+      const scheduledTime = new Date(now);
+      scheduledTime.setHours(targetHour, targetMinute, 0, 0);
+
+      if (now.getTime() >= scheduledTime.getTime()) {
         localStorage.setItem('last_notified_date', todayStr);
         const backlogCount = Object.values(data.subjects).reduce((sum, s) => sum + (s.backlog || 0), 0);
         const bodyText = backlogCount > 0 

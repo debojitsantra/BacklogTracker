@@ -74,6 +74,39 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
+ * Open Android's "Alarms & reminders" setting when exact alarms have been
+ * disabled. This is separate from notification display permission on Android
+ * 12+, and without it a daily reminder may be delayed substantially.
+ */
+export async function requestExactAlarmPermission(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+    return true;
+  }
+
+  try {
+    const status = await LocalNotifications.checkExactNotificationSetting();
+    if (status.exact_alarm === 'granted') return true;
+
+    // This opens the system setting. Android may restart the app after the
+    // setting changes, so the normal startup sync will schedule the reminder.
+    const updatedStatus = await LocalNotifications.changeExactNotificationSetting();
+    return updatedStatus.exact_alarm === 'granted';
+  } catch (e) {
+    console.error('Error requesting Android exact-alarm permission:', e);
+    return false;
+  }
+}
+
+function getNextReminderDate(hours: number, minutes: number): Date {
+  const next = new Date();
+  next.setHours(hours, minutes, 0, 0);
+  if (next.getTime() <= Date.now()) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next;
+}
+
+/**
  * Configure and schedule daily reminders.
  * On mobile, this registers a system-level local notification that persists when the app is killed.
  */
@@ -98,7 +131,9 @@ export async function syncScheduledNotifications(enabled: boolean, time: string,
           ? `You have ${backlogCount} pending backlog${backlogCount === 1 ? '' : 's'} to clear today! 🎯`
           : "Your tracker is clear! Keep up the great work! 🌟";
 
-        // Schedule daily notification
+        // `on` and `every` are alternative schedule modes in Capacitor. The
+        // previous combination was invalid on Android, so no daily alarm was
+        // reliably registered. A repeating date is the supported daily mode.
         await LocalNotifications.schedule({
           notifications: [
             {
@@ -107,11 +142,8 @@ export async function syncScheduledNotifications(enabled: boolean, time: string,
               body: bodyText,
               channelId: 'daily-reminder',
               schedule: {
-                on: {
-                  hour: hours,
-                  minute: minutes
-                },
-                every: 'day',
+                at: getNextReminderDate(hours, minutes),
+                repeats: true,
                 allowWhileIdle: true
               },
               sound: undefined,

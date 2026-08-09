@@ -12,7 +12,7 @@ import { getLocalDateString } from '../utils/date';
 import { validateAndParseImport } from '../utils/validation';
 import { Plus, Trash2, Palette, Sparkles, AlertCircle, AlertTriangle, CheckCircle, Upload, X, Check, FileJson, CalendarDays, HelpCircle, Clock } from 'lucide-react';
 import TimePickerModal from './TimePickerModal';
-import { requestNotificationPermission } from '../utils/notifications';
+import { requestExactAlarmPermission, requestNotificationPermission } from '../utils/notifications';
 
 const formatTimeTo12Hour = (time24: string): string => {
   if (!time24) return '12:00 AM';
@@ -130,6 +130,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
         alert('Permission denied. Please allow notification permission in your device/system settings to enable daily reminders.');
         return;
       }
+      await requestExactAlarmPermission();
     }
     setNotificationEnabled(nextVal);
   };

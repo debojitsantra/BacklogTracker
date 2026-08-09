@@ -34,7 +34,7 @@ import {
 import { AppData } from '../types';
 import { validateAndParseImport } from '../utils/validation';
 import TimePickerModal from './TimePickerModal';
-import { requestNotificationPermission, triggerDesktopNotification } from '../utils/notifications';
+import { requestExactAlarmPermission, requestNotificationPermission, triggerDesktopNotification } from '../utils/notifications';
 
 const formatTimeTo12Hour = (time24: string): string => {
   if (!time24) return '12:00 AM';
@@ -135,6 +135,10 @@ export default function SettingsModal({
       if (!granted) {
         alert('Permission denied. Please allow notification permission in your device/system settings to enable daily reminders.');
         return;
+      }
+      const exactAlarmGranted = await requestExactAlarmPermission();
+      if (!exactAlarmGranted && Capacitor.getPlatform() === 'android') {
+        alert('Exact alarms are disabled. Your reminder may be delayed until you allow “Alarms & reminders” for Backlog Tracker.');
       }
     }
     onUpdateData({
