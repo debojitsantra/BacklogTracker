@@ -1,15 +1,21 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
+type TauriNotificationApi = typeof import('@tauri-apps/plugin-notification');
+
 // Dynamically import Tauri Notification plugin only when running inside Tauri
-const getTauriNotification = async () => {
-  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-    try {
-      return await import('@tauri-apps/plugin-notification');
-    } catch (e) {
-      console.error('Failed to import Tauri notification plugin:', e);
-    }
+const getTauriNotification = async (): Promise<TauriNotificationApi | null> => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const { isTauri } = await import('@tauri-apps/api/core');
+    if (!isTauri()) return null;
+
+    return await import('@tauri-apps/plugin-notification');
+  } catch (e) {
+    console.error('Failed to load Tauri notification plugin:', e);
   }
+
   return null;
 };
 
@@ -161,21 +167,33 @@ export async function syncScheduledNotifications(enabled: boolean, time: string,
 /**
  * Trigger an immediate notification on desktop/web (if permissions granted).
  */
-export async function triggerDesktopNotification(title: string, body: string): Promise<void> {
+export async function triggerDesktopNotification(title: string, body: string): Promise<boolean> {
   const tauriNotif = await getTauriNotification();
   if (tauriNotif) {
     try {
-      await tauriNotif.sendNotification({ title, body });
-      return;
+      const hasPermission = await requestNotificationPermission();
+      if (!hasPermission) return false;
+
+      tauriNotif.sendNotification({ title, body });
+      return true;
     } catch (e) {
       console.error('Failed to send Tauri notification:', e);
+      return false;
     }
   }
 
-  if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (Notification.permission !== 'granted') {
+      const hasPermission = await requestNotificationPermission();
+      if (!hasPermission) return false;
+    }
+
     new Notification(title, {
       body,
       icon: '/assets/icon.svg' // Fallback to root assets icon if available
     });
+    return true;
   }
+
+  return false;
 }

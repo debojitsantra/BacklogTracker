@@ -237,7 +237,7 @@ export default function App() {
   useEffect(() => {
     if (Capacitor.isNativePlatform()) return;
 
-    const checkAndNotify = () => {
+    const checkAndNotify = async () => {
       if (!data.notification_enabled || !data.notification_time) return;
 
       const now = new Date();
@@ -251,21 +251,25 @@ export default function App() {
       scheduledTime.setHours(targetHour, targetMinute, 0, 0);
 
       if (now.getTime() >= scheduledTime.getTime()) {
-        localStorage.setItem('last_notified_date', todayStr);
         const backlogCount = Object.values(data.subjects).reduce((sum, s) => sum + (s.backlog || 0), 0);
         const bodyText = backlogCount > 0 
           ? `You have ${backlogCount} pending backlog${backlogCount === 1 ? '' : 's'} to clear today! 🎯`
           : "Your tracker is clear! Keep up the great work! 🌟";
-        triggerDesktopNotification(
+        const didNotify = await triggerDesktopNotification(
           "Backlog Tracker Reminder",
           bodyText
         );
+        if (didNotify) {
+          localStorage.setItem('last_notified_date', todayStr);
+        }
       }
     };
 
     // Run check immediately and then every 30 seconds
-    checkAndNotify();
-    const interval = setInterval(checkAndNotify, 30000);
+    void checkAndNotify();
+    const interval = setInterval(() => {
+      void checkAndNotify();
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [data.notification_enabled, data.notification_time, data.subjects]);
