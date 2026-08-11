@@ -166,7 +166,7 @@ export default function SettingsModal({
         await LocalNotifications.schedule({
           notifications: [
             {
-              id: 99,
+              id: 999,
               title: "Backlog Tracker Test",
               body: bodyText,
               channelId: 'daily-reminder',

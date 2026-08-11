@@ -97,24 +97,19 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
   }
 }
 
-function getNextReminderDate(hours: number, minutes: number): Date {
-  const next = new Date();
-  next.setHours(hours, minutes, 0, 0);
-  if (next.getTime() <= Date.now()) {
-    next.setDate(next.getDate() + 1);
-  }
-  return next;
-}
-
 /**
  * Configure and schedule daily reminders.
  * On mobile, this registers a system-level local notification that persists when the app is killed.
  */
+const REMINDER_ID = 42;
+const LEGACY_REMINDER_IDS = Array.from({ length: 100 }, (_, index) => ({ id: REMINDER_ID + index }));
+
 export async function syncScheduledNotifications(enabled: boolean, time: string, backlogCount: number): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     try {
-      // Always cancel existing scheduled notification first
-      await LocalNotifications.cancel({ notifications: [{ id: 42 }] });
+      // Remove the current reminder and any reminders created by earlier
+      // multi-reminder builds before scheduling the single daily reminder.
+      await LocalNotifications.cancel({ notifications: LEGACY_REMINDER_IDS });
 
       if (enabled && time) {
         // Request permissions/create channel
@@ -131,27 +126,24 @@ export async function syncScheduledNotifications(enabled: boolean, time: string,
           ? `You have ${backlogCount} pending backlog${backlogCount === 1 ? '' : 's'} to clear today! 🎯`
           : "Your tracker is clear! Keep up the great work! 🌟";
 
-        // `on` and `every` are alternative schedule modes in Capacitor. The
-        // previous combination was invalid on Android, so no daily alarm was
-        // reliably registered. A repeating date is the supported daily mode.
         await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: 42,
+          notifications: [{
+              id: REMINDER_ID,
               title: "Backlog Tracker",
               body: bodyText,
               channelId: 'daily-reminder',
               schedule: {
-                at: getNextReminderDate(hours, minutes),
-                repeats: true,
+                on: {
+                  hour: hours,
+                  minute: minutes
+                },
                 allowWhileIdle: true
               },
               sound: undefined,
               attachments: [],
               actionTypeId: "",
               extra: null
-            }
-          ]
+            }]
         });
       }
     } catch (e) {

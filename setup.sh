@@ -28,6 +28,6 @@ cd android
 ./gradlew assembleDebug
 
 echo "==> Moving apk to" $HOME
-mv $HOME/BacklogTracker/android/app/build/outputs/apk/debug/*.apk $HOME
+mv $HOME/BacklogTracker/android/app/build/outputs/apk/debug/*.apk /mnt/c/Users/USER/Downloads
 echo ""
 echo "Done."

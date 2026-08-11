@@ -241,17 +241,12 @@ export default function App() {
       if (!data.notification_enabled || !data.notification_time) return;
 
       const now = new Date();
-      const todayStr = now.toDateString();
-      const lastNotified = localStorage.getItem('last_notified_date');
-
-      if (lastNotified === todayStr) return;
-
       const [targetHour, targetMinute] = data.notification_time.split(':').map(Number);
       if (isNaN(targetHour) || isNaN(targetMinute)) return;
 
-      // Desktop timers can be throttled while the window is hidden or asleep.
-      // Deliver once the scheduled time has passed instead of requiring the
-      // interval to run during that exact minute.
+      const todayStr = now.toDateString();
+      if (localStorage.getItem('last_notified_date') === todayStr) return;
+
       const scheduledTime = new Date(now);
       scheduledTime.setHours(targetHour, targetMinute, 0, 0);
 
