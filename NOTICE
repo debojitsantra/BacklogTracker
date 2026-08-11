@@ -1,0 +1,40 @@
+Backlog Tracker
+Copyright 2026 Debojit Santra
+This project is licensed under the Apache License, Version 2.0.
+
+This product includes software developed by third-party contributors.
+The following components are used under their respective open-source licenses.
+
+--------------------------------------------------------------------
+
+React
+Copyright (c) Meta Platforms, Inc. and affiliates.
+Licensed under the MIT License.
+
+Vite
+Copyright (c) Evan You and Vite Contributors.
+Licensed under the MIT License.
+
+TypeScript
+Copyright (c) Microsoft Corporation.
+Licensed under the Apache License, Version 2.0.
+
+Capacitor
+Copyright (c) Ionic and Capacitor Contributors.
+Licensed under the MIT License.
+
+Tauri
+Copyright (c) Tauri Programme within the Commons Conservancy.
+Licensed under the MIT License.
+
+Tailwind CSS
+Copyright (c) Tailwind Labs, Inc.
+Licensed under the MIT License.
+
+Lucide Icons
+Copyright (c) Lucide Contributors.
+Licensed under the ISC License.
+
+Motion
+Copyright (c) Motion Contributors.
+Licensed under the MIT License.
