@@ -13,9 +13,7 @@ Backlog Tracker is an offline-first app for Android and desktop. It tracks anyth
 
 Download tracker templates from:
 
-[backlogdesigner.pages.dev](https://backlogdesigner.pages.dev) 
-
-Source Repository: [Github](https://github.com/debojitsantra/BacklogTracker-Templates)
+https://github.com/debojitsantra/BacklogTracker-Templates
 
 
 ## Features
@@ -65,7 +63,7 @@ Download the latest GitHub release for your platform:
 
 | Platform | Format / Install Options |
 |----------|--------------------------|
-| Windows  | <!-- [Winget](#windows-winget)*(applied, but not available yet)* -->[Setup.exe](https://github.com/debojitsantra/BacklogTracker/releases/), [MSI](https://github.com/debojitsantra/BacklogTracker/releases/) |
+| Windows  | [Winget](#windows-winget), [Setup.exe](https://github.com/debojitsantra/BacklogTracker/releases/), [MSI](https://github.com/debojitsantra/BacklogTracker/releases/) |
 | Linux    | [APT Repository](#debianubuntu-apt-repository), [RPM Repository](#fedora-rpm-repository), [DEB](https://github.com/debojitsantra/BacklogTracker/releases/), [RPM](https://github.com/debojitsantra/BacklogTracker/releases/), [AppImage](https://github.com/debojitsantra/BacklogTracker/releases/) |
 | macOS    | [DMG (aarch64)](https://github.com/debojitsantra/BacklogTracker/releases/) *(untested)* |
 | Android  | [APK](https://github.com/debojitsantra/BacklogTracker/releases/) |
@@ -91,13 +89,13 @@ sudo dnf install -y https://rpm.110010101.xyz/public.key
 
 sudo dnf install backlog-tracker
 ```
-<!--
+
 ### Windows Winget
 
 ```powershell
 winget install DebojitSantra.BacklogTracker
 ```
--->
+
 
 ## App Stores
 
