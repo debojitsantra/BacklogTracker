@@ -546,8 +546,9 @@ export default function SettingsModal({
                     </button>
                   </div>
                 )}
-
-                {data.notification_enabled === true && (
+          
+              {/* Test notification button
+              {data.notification_enabled === true && (
                   <button
                     onClick={handleTestNotification}
                     type="button"
@@ -556,7 +557,7 @@ export default function SettingsModal({
                     <Bell className="w-4 h-4" />
                     Send Test Notification
                   </button>
-                )}
+                )}  */}
               </div>
 
               <div className="space-y-2">
@@ -685,12 +686,12 @@ export default function SettingsModal({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <h3 className="text-xs font-bold text-[#49454f] dark:text-[#cac4d0] uppercase tracking-wider">Import Backlog Data</h3>
                   <a
-                    href="https://backlogdesigner.pages.dev"
+                    href="https://github.com/debojitsantra/BacklogTracker-Templates"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[10px] font-bold text-brand bg-brand-container hover:bg-brand-container-hover px-3 py-1.5 rounded-full border border-brand/20 transition-all text-center inline-block"
                   >
-                    Download Templates 🌐
+                    Download Templates
                   </a>
                 </div>
 
