@@ -3,13 +3,22 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 
 type TauriNotificationApi = typeof import('@tauri-apps/plugin-notification');
 
+function hasTauriRuntime(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  return Boolean(
+    (globalThis as { isTauri?: boolean }).isTauri ||
+    '__TAURI_INTERNALS__' in window
+  );
+}
+
 // Dynamically import Tauri Notification plugin only when running inside Tauri
 const getTauriNotification = async (): Promise<TauriNotificationApi | null> => {
-  if (typeof window === 'undefined') return null;
+  if (!hasTauriRuntime()) return null;
 
   try {
     const { isTauri } = await import('@tauri-apps/api/core');
-    if (!isTauri()) return null;
+    if (!isTauri() && !hasTauriRuntime()) return null;
 
     return await import('@tauri-apps/plugin-notification');
   } catch (e) {

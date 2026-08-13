@@ -178,7 +178,10 @@ export default function SettingsModal({
         console.error(e);
       }
     } else {
-      await triggerDesktopNotification("Backlog Tracker Test", bodyText);
+      const didNotify = await triggerDesktopNotification("Backlog Tracker Test", bodyText);
+      if (!didNotify) {
+        alert('Could not send a desktop notification. Please allow notifications for Backlog Tracker in your system settings.');
+      }
     }
   };
 
