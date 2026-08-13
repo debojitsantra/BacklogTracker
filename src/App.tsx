@@ -16,8 +16,9 @@ import {
   Settings,
   SlidersHorizontal
 } from 'lucide-react';
-import { AppData, Subject } from './types';
-import { MOTIVATIONAL_QUOTES, DEFAULT_DATA } from './data';
+import { AppData, Subject, FontSettings } from './types';
+import { MOTIVATIONAL_QUOTES, DEFAULT_DATA, DEFAULT_FONT_SETTINGS } from './data';
+import { getCurrentFontFamily, getFontSizeMultiplier, generateCustomFontCSS } from './utils/fonts';
 import KPICard from './components/KPICard';
 import SubjectCard from './components/SubjectCard';
 import BacklogChart from './components/BacklogChart';
@@ -134,6 +135,33 @@ export default function App() {
     localStorage.setItem('show_quotes', String(val));
   };
 
+  // Font settings state
+  const [fontSettings, setFontSettings] = useState<FontSettings>(() => {
+    const saved = localStorage.getItem('fontSettings');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return DEFAULT_FONT_SETTINGS;
+      }
+    }
+    if (data.fontSettings) {
+      return data.fontSettings;
+    }
+    return DEFAULT_FONT_SETTINGS;
+  });
+
+  const handleUpdateFontSettings = (newSettings: FontSettings) => {
+    setFontSettings(newSettings);
+    localStorage.setItem('fontSettings', JSON.stringify(newSettings));
+    
+    // Also update in app data
+    handleSaveData({
+      ...data,
+      fontSettings: newSettings
+    });
+  };
+
   const closeHelpModal = () => {
     localStorage.setItem(
       helpContext === 'setup' ? 'backlog_tracker_setup_help_seen' : 'backlog_tracker_help_seen',
@@ -223,7 +251,32 @@ export default function App() {
     }
   }, [data.palette_color, darkMode]);
 
-  // Local/Native notification synchronization
+  // Apply font settings to the document
+  useEffect(() => {
+    const currentFontFamily = getCurrentFontFamily(fontSettings);
+    const fontSizePercentage = fontSettings.fontSize; 
+    
+    const root = document.documentElement;
+    root.style.setProperty('--font-family-sans', currentFontFamily);
+    root.style.setProperty('--font-size-multiplier', `${fontSizePercentage}%`);
+    
+    if (fontSettings.fontFamily === 'custom' && fontSettings.selectedCustomFont) {
+      const customFont = fontSettings.customFonts.find(f => f.name === fontSettings.selectedCustomFont);
+      if (customFont) {
+        const styleId = 'custom-font-style';
+        let styleElement = document.getElementById(styleId);
+        
+        if (!styleElement) {
+          styleElement = document.createElement('style');
+          styleElement.id = styleId;
+          document.head.appendChild(styleElement);
+        }
+        
+        styleElement.textContent = generateCustomFontCSS(customFont);
+      }
+    }
+  }, [fontSettings]);
+
   useEffect(() => {
     const backlogCount = Object.values(data.subjects).reduce((sum, s) => sum + (s.backlog || 0), 0);
     syncScheduledNotifications(
@@ -1101,6 +1154,8 @@ export default function App() {
             setHelpContext('dashboard');
             setHelpModalOpen(true);
           }}
+          fontSettings={fontSettings}
+          onUpdateFontSettings={handleUpdateFontSettings}
         /></DeferredScreen>
       )}
     </div>

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { registerPlugin } from '@capacitor/core';
 import { Share } from '@capacitor/share';
@@ -29,12 +29,24 @@ import {
   Award,
   HelpCircle,
   Bell,
-  Clock
+  Clock,
+  TextCursor,
+  Type,
+  Trash2
 } from 'lucide-react';
-import { AppData } from '../types';
+import { AppData, FontType, FontSettings, CustomFont } from '../types';
+import { DEFAULT_FONT_SETTINGS } from '../data';
 import { validateAndParseImport } from '../utils/validation';
 import TimePickerModal from './TimePickerModal';
 import { requestExactAlarmPermission, requestNotificationPermission, triggerDesktopNotification } from '../utils/notifications';
+import {
+  PRESET_FONTS,
+  FONT_FAMILY_MAP,
+  createCustomFont,
+  selectFont,
+  setFontSize,
+  removeCustomFont
+} from '../utils/fonts';
 
 const formatTimeTo12Hour = (time24: string): string => {
   if (!time24) return '12:00 AM';
@@ -60,6 +72,8 @@ interface SettingsModalProps {
   onToggleDarkMode: (val: boolean) => void;
   onOpenConfiguration: () => void;
   onOpenHelp: () => void;
+  fontSettings: FontSettings;
+  onUpdateFontSettings: (newSettings: FontSettings) => void;
 }
 
 const COLOR_PRESETS = [
@@ -95,13 +109,20 @@ export default function SettingsModal({
   darkMode,
   onToggleDarkMode,
   onOpenConfiguration,
-  onOpenHelp
+  onOpenHelp,
+  fontSettings,
+  onUpdateFontSettings
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<'customization' | 'backup'>('customization');
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
 
   const [selectedColor, setSelectedColor] = useState(data.palette_color || '#6750a4');
   const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
+  
+  // Font settings state
+  const [uploadingFont, setUploadingFont] = useState(false);
+  const [fontUploadError, setFontUploadError] = useState<string | null>(null);
+  const fontFileInputRef = useRef<HTMLInputElement>(null);
 
   const [importText, setImportText] = useState('');
   const [validationMessage, setValidationMessage] = useState<{
@@ -346,6 +367,66 @@ export default function SettingsModal({
     onClose();
   };
 
+  const handleFontSelect = (font: FontType | string) => {
+    const newSettings = selectFont(fontSettings, font);
+    onUpdateFontSettings(newSettings);
+  };
+
+  const handleFontSizeChange = (newSize: number) => {
+    const newSettings = setFontSize(fontSettings, newSize);
+    onUpdateFontSettings(newSettings);
+  };
+
+  const handleFontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['font/ttf', 'font/otf', 'font/woff', 'font/woff2', 'application/font-sfnt', 'application/font-woff'];
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(ttf|otf|woff|woff2)$/i)) {
+      setFontUploadError('Please upload a valid font file (TTF, OTF, WOFF, or WOFF2)');
+      if (fontFileInputRef.current) {
+        fontFileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    setUploadingFont(true);
+    setFontUploadError(null);
+
+    try {
+      const newFont = await createCustomFont(file);
+      
+      const fontNameExists = fontSettings.customFonts.some(f => f.name === newFont.name);
+      if (fontNameExists) {
+        setFontUploadError(`A font with the name "${newFont.name}" already exists. Please rename your file or remove the existing one.`);
+        return;
+      }
+
+      const newSettings: FontSettings = {
+        ...fontSettings,
+        customFonts: [...fontSettings.customFonts, newFont],
+        fontFamily: 'custom',
+        selectedCustomFont: newFont.name
+      };
+      
+      onUpdateFontSettings(newSettings);
+      setUploadingFont(false);
+    } catch (error) {
+      setFontUploadError('Failed to process font file. Please try another file.');
+      setUploadingFont(false);
+    } finally {
+      if (fontFileInputRef.current) {
+        fontFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveCustomFont = (fontName: string) => {
+    const newSettings = removeCustomFont(fontSettings, fontName);
+    onUpdateFontSettings(newSettings);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -454,6 +535,128 @@ export default function SettingsModal({
                   })}
                 </div>
 
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <Type className="w-4 h-4 text-brand" />
+                  <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">Font Settings</label>
+                </div>
+
+                {/* Font Selection */}
+                <div className="space-y-2">
+                  <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold">Select Font</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {PRESET_FONTS.map((font) => {
+                      const isSelected = fontSettings.fontFamily === font.value;
+                      return (
+                        <button
+                          key={font.value}
+                          onClick={() => handleFontSelect(font.value)}
+                          className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all text-left cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#f3edf7] dark:bg-[#24262f] border-brand shadow-sm font-bold'
+                              : 'bg-white dark:bg-[#1a1c22]/40 border-[#cac4d0]/30 dark:border-[#24262f]/60 hover:border-brand/40'
+                            }`}
+                          style={{ fontFamily: FONT_FAMILY_MAP[font.value] }}
+                        >
+                          <span className="text-xs truncate">{font.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom Font Upload */}
+                  <div className="mt-3 space-y-2">
+                    <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold">Upload Custom Font (TTF/OTF)</label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        onClick={() => fontFileInputRef.current?.click()}
+                        disabled={uploadingFont}
+                        className="flex-1 border-2 border-dashed border-[#cac4d0]/50 dark:border-[#24262f] hover:border-brand hover:bg-[#f3edf7]/20 py-3 rounded-xl flex flex-col items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Upload className="w-5 h-5 text-brand" />
+                        <span className="text-[11px] font-bold">Upload TTF/OTF Font</span>
+                        <input
+                          type="file"
+                          accept=".ttf,.otf,.woff,.woff2"
+                          ref={fontFileInputRef}
+                          onChange={handleFontUpload}
+                          className="hidden"
+                          disabled={uploadingFont}
+                        />
+                      </button>
+                    </div>
+                    
+                    {fontUploadError && (
+                      <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded-xl text-red-700 dark:text-red-400 text-xs">
+                        <AlertCircle className="w-4 h-4 inline-block mr-1" />
+                        {fontUploadError}
+                      </div>
+                    )}
+
+                    {fontSettings.customFonts.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold">Your Custom Fonts</label>
+                        <div className="grid grid-cols-1 gap-2">
+                          {fontSettings.customFonts.map((customFont) => {
+                            const isSelected = fontSettings.fontFamily === 'custom' && fontSettings.selectedCustomFont === customFont.name;
+                            return (
+                              <div
+                                key={customFont.name}
+                                className={`p-2.5 rounded-xl border flex items-center justify-between transition-all ${
+                                  isSelected
+                                    ? 'bg-[#f3edf7] dark:bg-[#24262f] border-brand shadow-sm'
+                                    : 'bg-white dark:bg-[#1a1c22]/40 border-[#cac4d0]/30 dark:border-[#24262f]/60'
+                                }`}
+                              >
+                                <button
+                                  onClick={() => handleFontSelect(customFont.name)}
+                                  className="flex-1 text-left cursor-pointer"
+                                  style={{ fontFamily: customFont.fontFamily }}
+                                >
+                                  <span className="text-xs font-bold truncate block">{customFont.name}</span>
+                                  <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Custom Font</span>
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveCustomFont(customFont.name)}
+                                  className="p-1.5 text-[#49454f] dark:text-[#cac4d0] hover:text-red-500 rounded-lg cursor-pointer transition-colors"
+                                  title="Remove font"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Font Size Slider */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <TextCursor className="w-4 h-4 text-brand" />
+                    <span className="text-xs font-bold">Text Size: {fontSettings.fontSize}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={80}
+                    max={200}
+                    step={10}
+                    value={fontSettings.fontSize}
+                    onChange={(e) => handleFontSizeChange(Number(e.target.value))}
+                    className="w-full h-2 bg-[#cac4d0]/30 dark:bg-[#24262f] rounded-lg appearance-none cursor-pointer accent-brand"
+                  />
+                  <div className="flex justify-between text-[10px] text-[#49454f] dark:text-[#cac4d0]">
+                    <span>80%</span>
+                    <span>100%</span>
+                    <span>120%</span>
+                    <span>150%</span>
+                    <span>200%</span>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">

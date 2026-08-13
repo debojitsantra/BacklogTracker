@@ -4,13 +4,18 @@
 @variant dark (.dark &, &.dark);
 
 @theme {
-  --font-sans: 'Outfit', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-family-sans);
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
   --color-brand: var(--brand);
   --color-brand-container: var(--brand-container);
   --color-brand-container-hover: var(--brand-container-hover);
   --color-brand-text: var(--brand-text);
+}
+
+:root {
+  --font-family-sans: 'Outfit', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-size-multiplier: 1;
 }
 
 :root {
@@ -48,6 +53,12 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  font-size: var(--font-size-multiplier, 100%);
+}
+
+body {
+  font-size: 1rem;
+  font-family: var(--font-family-sans, 'Outfit', 'Inter', ui-sans-serif, system-ui, sans-serif);
 }
 
 body, body *, input, textarea, select {

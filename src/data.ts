@@ -88,6 +88,13 @@ export const PALETTE = [
   "#fdd835", "#ffa726", "#8d6e63", "#78909c", "#546e7a"
 ];
 
+export const DEFAULT_FONT_SETTINGS = {
+  fontFamily: 'Inter' as const,
+  fontSize: 100,
+  customFonts: [],
+  selectedCustomFont: undefined
+};
+
 export const DEFAULT_DATA = {
   subjects: {},
   classes_per_day: 4,
@@ -98,5 +105,6 @@ export const DEFAULT_DATA = {
   theme: "dark" as const,
   auto_growth_enabled: true,
   notification_enabled: false,
-  notification_time: "20:00"
+  notification_time: "20:00",
+  fontSettings: DEFAULT_FONT_SETTINGS
 };

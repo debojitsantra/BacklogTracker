@@ -23,6 +23,21 @@ export interface CustomPreset {
   entries: Subject[];
 }
 
+export type FontType = 'Inter' | 'Outfit' | 'JetBrains Mono' | 'CormorantGaramond' | 'InstrumentSerif' | 'Quicksand' | 'custom';
+
+export interface CustomFont {
+  name: string;
+  data: string; 
+  fontFamily: string;
+}
+
+export interface FontSettings {
+  fontFamily: FontType;
+  fontSize: number; 
+  customFonts: CustomFont[];
+  selectedCustomFont?: string; 
+}
+
 export interface AppData {
   subjects: Record<string, Subject>;
   classes_per_day: number;
@@ -38,4 +53,5 @@ export interface AppData {
   custom_presets?: CustomPreset[];
   /** User-edited versions of the built-in Study, Gaming, and Work presets. */
   preset_overrides?: Record<string, Subject[]>;
+  fontSettings?: FontSettings;
 }
