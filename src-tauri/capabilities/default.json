@@ -7,7 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "notification:default",
-    "single-instance:default"
+    "notification:default"
   ]
 }
