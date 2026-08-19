@@ -3,6 +3,8 @@
 [![F-Droid](https://img.shields.io/f-droid/v/com.debojitsantra.backlogtracker.svg)](https://f-droid.org/packages/com.debojitsantra.backlogtracker/)
 ![Maintenance Paused](https://img.shields.io/badge/Maintenance-Paused-yellow)
 
+> ⚠️ Maintenance on this repo is paused until March 2027. Issues and PRs may not be reviewed until then.
+
 <p align="center">
   <img src="public/app_logo.png" width="120" style="border-radius: 24px;" alt="Backlog Tracker Logo" referrerPolicy="no-referrer" />
 </p>
