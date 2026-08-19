@@ -1,7 +1,7 @@
 # Backlog Tracker
 
 [![F-Droid](https://img.shields.io/f-droid/v/com.debojitsantra.backlogtracker.svg)](https://f-droid.org/packages/com.debojitsantra.backlogtracker/)
-![Maintenance](https://img.shields.io/badge/maintained-yes)
+![Maintenance Paused](https://img.shields.io/badge/Maintenance-Paused-yellow)
 
 <p align="center">
   <img src="public/app_logo.png" width="120" style="border-radius: 24px;" alt="Backlog Tracker Logo" referrerPolicy="no-referrer" />
