@@ -37,7 +37,7 @@
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.2",
     "tsx": "^4.21.0",
     "typescript": "~6.0.3",
