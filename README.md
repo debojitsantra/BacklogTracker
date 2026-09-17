@@ -179,4 +179,4 @@ npm run tauri:build
 
 ## Important Declaration
 
-Documentation and some UI features were made using Gemini. Everything is reviewed manually before committing.
+Documentation and some UI features were made using Gemini. Everything was reviewed manually before committing.
