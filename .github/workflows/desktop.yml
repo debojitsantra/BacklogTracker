@@ -75,6 +75,38 @@ jobs:
       - name: Build desktop application
         run: npm run tauri:build
 
+      - name: Fix AppImage launcher permissions
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage_dir="src-tauri/target/release/bundle/appimage"
+          appimage="$(find "$appimage_dir" -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$appimage"
+
+          # AppRun.wrapped is inside the SquashFS image. Make it readable and
+          # executable for the catalog tester and other users before repacking.
+          chmod +x "$appimage"
+          work_dir="$(mktemp -d)"
+          trap 'rm -rf "$work_dir"' EXIT
+          (cd "$work_dir" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null)
+          chmod 755 "$work_dir/squashfs-root/AppRun.wrapped"
+
+          curl -fsSL \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            -o "$work_dir/appimagetool.AppImage"
+          chmod +x "$work_dir/appimagetool.AppImage"
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 \
+            "$work_dir/appimagetool.AppImage" \
+            "$work_dir/squashfs-root" "$work_dir/fixed.AppImage"
+          chmod +x "$work_dir/fixed.AppImage"
+          mv "$work_dir/fixed.AppImage" "$appimage"
+
+          # Fail the build if repacking ever drops the executable permission.
+          mkdir "$work_dir/verify"
+          (cd "$work_dir/verify" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null)
+          test "$(stat -c '%a' "$work_dir/verify/squashfs-root/AppRun.wrapped")" = 755
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
