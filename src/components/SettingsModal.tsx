@@ -7,7 +7,6 @@ import React, { useState, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { registerPlugin } from '@capacitor/core';
 import { Share } from '@capacitor/share';
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -28,24 +27,12 @@ import {
   Heart,
   Award,
   HelpCircle,
-  Bell,
-  Clock
+  Bell
 } from 'lucide-react';
 import { AppData } from '../types';
 import { validateAndParseImport } from '../utils/validation';
-import TimePickerModal from './TimePickerModal';
-import { requestExactAlarmPermission, requestNotificationPermission, triggerDesktopNotification } from '../utils/notifications';
-
-const formatTimeTo12Hour = (time24: string): string => {
-  if (!time24) return '12:00 AM';
-  const [hStr, mStr] = time24.split(':');
-  const h = parseInt(hStr, 10);
-  if (isNaN(h)) return time24;
-  const period = h >= 12 ? 'PM' : 'AM';
-  let h12 = h % 12;
-  if (h12 === 0) h12 = 12;
-  return `${String(h12).padStart(2, '0')}:${mStr} ${period}`;
-};
+import ReminderSettingsPopover from './ReminderSettingsPopover';
+import { requestExactAlarmPermission, requestNotificationPermission } from '../utils/notifications';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -101,7 +88,7 @@ export default function SettingsModal({
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
 
   const [selectedColor, setSelectedColor] = useState(data.palette_color || '#6750a4');
-  const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
+  const [isReminderMenuOpen, setIsReminderMenuOpen] = useState(false);
 
   const [importText, setImportText] = useState('');
   const [validationMessage, setValidationMessage] = useState<{
@@ -147,42 +134,11 @@ export default function SettingsModal({
     });
   };
 
-  const handleNotificationTimeChange = (timeStr: string) => {
+  const handleNotificationRemindersChange = (reminders: Record<string, string[]>) => {
     onUpdateData({
       ...data,
-      notification_time: timeStr
+      notification_reminders: reminders
     });
-  };
-
-  const handleTestNotification = async () => {
-    const backlogCount = Object.values(data.subjects).reduce((sum, s) => sum + (s.backlog || 0), 0);
-    const bodyText = backlogCount > 0 
-      ? `You have ${backlogCount} pending backlog${backlogCount === 1 ? '' : 's'} to clear today! 🎯`
-      : "Your tracker is clear! Keep up the great work! 🌟";
-
-    if (Capacitor.isNativePlatform()) {
-      try {
-        await requestNotificationPermission();
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: 999,
-              title: "Backlog Tracker Test",
-              body: bodyText,
-              channelId: 'daily-reminder',
-              schedule: { at: new Date(Date.now() + 1000) } // 1 second from now
-            }
-          ]
-        });
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      const didNotify = await triggerDesktopNotification("Backlog Tracker Test", bodyText);
-      if (!didNotify) {
-        alert('Could not send a desktop notification. Please allow notifications for Backlog Tracker in your system settings.');
-      }
-    }
   };
 
 
@@ -527,37 +483,23 @@ export default function SettingsModal({
                 </div>
 
                 {data.notification_enabled === true && (
-                  <div className="flex items-center justify-between p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
+                  <div className="flex items-center justify-between gap-3 p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
                     <div className="flex flex-col flex-1 pr-4">
                       <div className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-brand" />
-                        <span className="text-xs font-bold">Reminder time</span>
+                        <Bell className="w-3.5 h-3.5 text-brand" />
+                        <span className="text-xs font-bold">Backlog reminders</span>
                       </div>
-                      <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Tap to choose notification time</span>
+                      <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Choose one or more times for each backlog</span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setIsTimePickerOpen(true)}
-                      className="flex items-center gap-2 bg-white dark:bg-[#1a1c22]/40 px-3 py-1.5 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 cursor-pointer relative hover:border-brand/40 transition-all focus:outline-none"
+                      onClick={() => setIsReminderMenuOpen(true)}
+                      className="flex-shrink-0 flex items-center gap-2 bg-white dark:bg-[#1a1c22]/40 px-3 py-2 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 cursor-pointer hover:border-brand/40 transition-all focus:outline-none text-xs font-bold text-brand"
                     >
-                      <span className="text-xs font-bold text-[#1d1b20] dark:text-white font-mono">
-                        {formatTimeTo12Hour(data.notification_time || '20:00')}
-                      </span>
+                      Customize
                     </button>
                   </div>
                 )}
-          
-              {/* Test notification button
-              {data.notification_enabled === true && (
-                  <button
-                    onClick={handleTestNotification}
-                    type="button"
-                    className="w-full flex items-center justify-center gap-2 p-2.5 bg-brand-container hover:bg-brand-container-hover rounded-xl border border-brand/20 text-brand text-xs font-bold transition-all cursor-pointer focus:outline-none"
-                  >
-                    <Bell className="w-4 h-4" />
-                    Send Test Notification
-                  </button>
-                )}  */}
               </div>
 
               <div className="space-y-2">
@@ -683,17 +625,7 @@ export default function SettingsModal({
               </div>
 
               <div className="space-y-3 border-t border-[#cac4d0]/20 dark:border-[#24262f]/60 pt-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <h3 className="text-xs font-bold text-[#49454f] dark:text-[#cac4d0] uppercase tracking-wider">Import Backlog Data</h3>
-                  <a
-                    href="https://github.com/debojitsantra/BacklogTracker-Templates"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] font-bold text-brand bg-brand-container hover:bg-brand-container-hover px-3 py-1.5 rounded-full border border-brand/20 transition-all text-center inline-block"
-                  >
-                    Download Templates
-                  </a>
-                </div>
+                <h3 className="text-xs font-bold text-[#49454f] dark:text-[#cac4d0] uppercase tracking-wider">Import Backlog Data</h3>
 
                 <div className="space-y-3">
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -849,11 +781,12 @@ export default function SettingsModal({
         )}
       </AnimatePresence>
 
-      <TimePickerModal
-        isOpen={isTimePickerOpen}
-        onClose={() => setIsTimePickerOpen(false)}
-        initialTime={data.notification_time || '20:00'}
-        onSave={handleNotificationTimeChange}
+      <ReminderSettingsPopover
+        isOpen={isReminderMenuOpen}
+        subjects={data.subjects}
+        reminders={data.notification_reminders || {}}
+        onChange={handleNotificationRemindersChange}
+        onClose={() => setIsReminderMenuOpen(false)}
       />
 
     </div>

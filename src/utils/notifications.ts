@@ -116,17 +116,31 @@ export async function requestExactAlarmPermission(): Promise<boolean> {
  * Configure and schedule daily reminders.
  * On mobile, this registers a system-level local notification that persists when the app is killed.
  */
-const REMINDER_ID = 42;
-const LEGACY_REMINDER_IDS = Array.from({ length: 100 }, (_, index) => ({ id: REMINDER_ID + index }));
+const LEGACY_REMINDER_IDS = Array.from({ length: 100 }, (_, index) => ({ id: 42 + index }));
+// Reuse a bounded pool of IDs. Re-syncing replaces these pending notifications
+// instead of allocating ever-growing IDs as users edit reminder times.
+const MAX_SCHEDULED_REMINDERS = 500;
+const REMINDER_ID_BASE = 1000;
+const SCHEDULED_REMINDER_IDS = Array.from({ length: MAX_SCHEDULED_REMINDERS }, (_, index) => ({ id: REMINDER_ID_BASE + index }));
 
-export async function syncScheduledNotifications(enabled: boolean, time: string, backlogCount: number): Promise<void> {
+export async function syncScheduledNotifications(
+  enabled: boolean,
+  reminders: Record<string, string[]> | undefined,
+  subjects: Record<string, { name: string; emoji: string; backlog: number }>,
+  legacyTime?: string,
+): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     try {
-      // Remove the current reminder and any reminders created by earlier
-      // multi-reminder builds before scheduling the single daily reminder.
-      await LocalNotifications.cancel({ notifications: LEGACY_REMINDER_IDS });
+      const managedIds = new Set([...LEGACY_REMINDER_IDS, ...SCHEDULED_REMINDER_IDS].map(({ id }) => id));
+      const pending = await LocalNotifications.getPending();
+      const staleManagedNotifications = pending.notifications
+        .filter(({ id }) => managedIds.has(id))
+        .map(({ id }) => ({ id }));
+      if (staleManagedNotifications.length) {
+        await LocalNotifications.cancel({ notifications: staleManagedNotifications });
+      }
 
-      if (enabled && time) {
+      if (enabled) {
         // Request permissions/create channel
         const hasPermission = await requestNotificationPermission();
         if (!hasPermission) {
@@ -134,32 +148,35 @@ export async function syncScheduledNotifications(enabled: boolean, time: string,
           return;
         }
 
-        const [hours, minutes] = time.split(':').map(Number);
-        if (isNaN(hours) || isNaN(minutes)) return;
+        const scheduled = [];
+        if (reminders === undefined && legacyTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(legacyTime)) {
+          const [hours, minutes] = legacyTime.split(':').map(Number);
+          const backlogCount = Object.values(subjects).reduce((sum, subject) => sum + (subject.backlog || 0), 0);
+          scheduled.push({
+            id: 42,
+            title: 'Backlog Tracker',
+            body: backlogCount > 0 ? `You have ${backlogCount} pending backlog${backlogCount === 1 ? '' : 's'} to clear today! 🎯` : 'Your tracker is clear! Keep up the great work! 🌟',
+            channelId: 'daily-reminder',
+            schedule: { on: { hour: hours, minute: minutes }, allowWhileIdle: true },
+          });
+        } else {
+          const reminderEntries = Object.keys(subjects).sort().flatMap((name) =>
+            (reminders?.[name] || []).map((time) => ({ name, subject: subjects[name], time })),
+          ).filter(({ time }) => /^([01]\d|2[0-3]):[0-5]\d$/.test(time)).slice(0, MAX_SCHEDULED_REMINDERS);
 
-        const bodyText = backlogCount > 0 
-          ? `You have ${backlogCount} pending backlog${backlogCount === 1 ? '' : 's'} to clear today! 🎯`
-          : "Your tracker is clear! Keep up the great work! 🌟";
-
-        await LocalNotifications.schedule({
-          notifications: [{
-              id: REMINDER_ID,
-              title: "Backlog Tracker",
-              body: bodyText,
+          reminderEntries.forEach(({ name, subject, time }, index) => {
+            const [hours, minutes] = time.split(':').map(Number);
+            scheduled.push({
+              id: REMINDER_ID_BASE + index,
+              title: `${subject.emoji} ${name}`,
+              body: `${subject.backlog} pending item${subject.backlog === 1 ? '' : 's'} in this backlog.`,
               channelId: 'daily-reminder',
-              schedule: {
-                on: {
-                  hour: hours,
-                  minute: minutes
-                },
-                allowWhileIdle: true
-              },
-              sound: undefined,
-              attachments: [],
-              actionTypeId: "",
-              extra: null
-            }]
-        });
+              schedule: { on: { hour: hours, minute: minutes }, allowWhileIdle: true },
+            });
+          });
+        }
+
+        if (scheduled.length) await LocalNotifications.schedule({ notifications: scheduled });
       }
     } catch (e) {
       console.error('Failed to sync Capacitor local notifications:', e);
@@ -167,7 +184,7 @@ export async function syncScheduledNotifications(enabled: boolean, time: string,
   } else {
     // On web/desktop, permissions are requested, but actual triggering is handled
     // via background check interval in App.tsx while the app is running.
-    if (enabled && time) {
+    if (enabled && (legacyTime || (reminders && Object.values(reminders).some((times) => times.length > 0)))) {
       await requestNotificationPermission();
     }
   }

@@ -224,6 +224,20 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     ? parsed.notification_time
     : undefined;
 
+  let notificationReminders: Record<string, string[]> | undefined;
+  if (parsed.notification_reminders !== undefined) {
+    if (!parsed.notification_reminders || typeof parsed.notification_reminders !== 'object' || Array.isArray(parsed.notification_reminders)) {
+      return { success: false, error: 'notification_reminders must be an object mapping backlog names to reminder times.' };
+    }
+    notificationReminders = {};
+    for (const [name, rawTimes] of Object.entries(parsed.notification_reminders)) {
+      if (!Array.isArray(rawTimes) || rawTimes.some((time) => typeof time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) {
+        return { success: false, error: `Reminder times for "${name}" must be an array of 24-hour HH:MM strings.` };
+      }
+      if (validatedSubjects[name]) notificationReminders[name] = Array.from(new Set(rawTimes as string[])).sort();
+    }
+  }
+
   const cleanData: AppData = {
     subjects: validatedSubjects,
     classes_per_day: classesPerDay,
@@ -236,6 +250,7 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     auto_growth_enabled: parsed.auto_growth_enabled !== undefined ? Boolean(parsed.auto_growth_enabled) : true,
     notification_enabled: notificationEnabled,
     notification_time: notificationTime,
+    notification_reminders: notificationReminders,
   };
 
   if (parsed.custom_presets !== undefined) {

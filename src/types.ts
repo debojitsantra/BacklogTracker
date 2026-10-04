@@ -35,6 +35,7 @@ export interface AppData {
   auto_growth_enabled?: boolean;
   notification_enabled?: boolean;
   notification_time?: string; // "HH:MM"
+  notification_reminders?: Record<string, string[]>;
   custom_presets?: CustomPreset[];
   /** User-edited versions of the built-in Study, Gaming, and Work presets. */
   preset_overrides?: Record<string, Subject[]>;

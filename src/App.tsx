@@ -225,42 +225,44 @@ export default function App() {
 
   // Local/Native notification synchronization
   useEffect(() => {
-    const backlogCount = Object.values(data.subjects).reduce((sum, s) => sum + (s.backlog || 0), 0);
     syncScheduledNotifications(
       data.notification_enabled || false,
-      data.notification_time || '20:00',
-      backlogCount
+      data.notification_reminders,
+      data.subjects,
+      data.notification_time,
     );
-  }, [data.notification_enabled, data.notification_time, data.subjects]);
+  }, [data.notification_enabled, data.notification_time, data.notification_reminders, data.subjects]);
 
   // Desktop background notification handler
   useEffect(() => {
     if (Capacitor.isNativePlatform()) return;
 
     const checkAndNotify = async () => {
-      if (!data.notification_enabled || !data.notification_time) return;
+      if (!data.notification_enabled) return;
 
       const now = new Date();
-      const [targetHour, targetMinute] = data.notification_time.split(':').map(Number);
-      if (isNaN(targetHour) || isNaN(targetMinute)) return;
-
       const todayStr = now.toDateString();
-      if (localStorage.getItem('last_notified_date') === todayStr) return;
+      const schedules = data.notification_reminders ?? (data.notification_time
+        ? { __legacy__: [data.notification_time] }
+        : {});
+      for (const [name, times] of Object.entries(schedules)) {
+        for (const time of times) {
+          if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) continue;
+          const storageKey = `last_notified_${encodeURIComponent(name)}_${time}`;
+          if (localStorage.getItem(storageKey) === todayStr) continue;
 
-      const scheduledTime = new Date(now);
-      scheduledTime.setHours(targetHour, targetMinute, 0, 0);
+          const [targetHour, targetMinute] = time.split(':').map(Number);
+          const scheduledTime = new Date(now);
+          scheduledTime.setHours(targetHour, targetMinute, 0, 0);
+          if (now.getTime() < scheduledTime.getTime()) continue;
 
-      if (now.getTime() >= scheduledTime.getTime()) {
-        const backlogCount = Object.values(data.subjects).reduce((sum, s) => sum + (s.backlog || 0), 0);
-        const bodyText = backlogCount > 0 
-          ? `You have ${backlogCount} pending backlog${backlogCount === 1 ? '' : 's'} to clear today! 🎯`
-          : "Your tracker is clear! Keep up the great work! 🌟";
-        const didNotify = await triggerDesktopNotification(
-          "Backlog Tracker Reminder",
-          bodyText
-        );
-        if (didNotify) {
-          localStorage.setItem('last_notified_date', todayStr);
+          const subject = data.subjects[name];
+          const title = subject ? `${subject.emoji} ${name}` : 'Backlog Tracker Reminder';
+          const body = subject
+            ? `${subject.backlog} pending item${subject.backlog === 1 ? '' : 's'} in this backlog.`
+            : 'It’s time to check your backlogs. 🎯';
+          const didNotify = await triggerDesktopNotification(title, body);
+          if (didNotify) localStorage.setItem(storageKey, todayStr);
         }
       }
     };
@@ -272,7 +274,7 @@ export default function App() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [data.notification_enabled, data.notification_time, data.subjects]);
+  }, [data.notification_enabled, data.notification_time, data.notification_reminders, data.subjects]);
 
   const [currentQuote, setCurrentQuote] = useState(MOTIVATIONAL_QUOTES[0]);
   const displayedQuote = splitQuoteAttribution(currentQuote);
