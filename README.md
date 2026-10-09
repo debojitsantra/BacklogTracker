@@ -11,12 +11,6 @@
 
 Backlog Tracker is an offline-first app for Android and desktop. It tracks anything that piles up: study backlogs, work queues, games, habits, routines, or custom pending lists.
 
-## Template Repo
-
-Download tracker templates from:
-
-https://github.com/debojitsantra/BacklogTracker-Templates
-
 
 ## Features
 
