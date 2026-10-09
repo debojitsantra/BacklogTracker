@@ -60,7 +60,7 @@ Download the latest GitHub release for your platform:
 | Platform | Format / Install Options |
 |----------|--------------------------|
 | Windows  | [Winget](#windows-winget), [Setup.exe](https://github.com/debojitsantra/BacklogTracker/releases/), [MSI](https://github.com/debojitsantra/BacklogTracker/releases/) |
-| Linux    | [APT Repository](#debianubuntu-apt-repository), [RPM Repository](#fedora-rpm-repository), [DEB](https://github.com/debojitsantra/BacklogTracker/releases/), [RPM](https://github.com/debojitsantra/BacklogTracker/releases/), [AppImage](https://github.com/debojitsantra/BacklogTracker/releases/) |
+| Linux    | [APT Repository](#debianubuntu-apt-repository), [RPM Repository](#fedora-rpm-repository), [DEB](https://github.com/debojitsantra/BacklogTracker/releases/), [RPM](https://github.com/debojitsantra/BacklogTracker/releases/), [AppImage](https://github.com/debojitsantra/BacklogTracker/releases/) *(has some issues)*|
 | macOS    | [DMG (aarch64)](https://github.com/debojitsantra/BacklogTracker/releases/) *(untested)* |
 | Android  | [APK](https://github.com/debojitsantra/BacklogTracker/releases/) |
 
