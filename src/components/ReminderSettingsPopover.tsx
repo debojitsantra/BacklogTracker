@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Bell, Check, Clock3, Plus, X } from 'lucide-react';
+import { Bell, Check, Clock3, X } from 'lucide-react';
 import { Subject } from '../types';
+import TimePickerModal from './TimePickerModal';
 
 interface ReminderSettingsPopoverProps {
   isOpen: boolean;
@@ -20,22 +21,18 @@ export default function ReminderSettingsPopover({
   onChange,
   onClose,
 }: ReminderSettingsPopoverProps) {
-  const [draftTimes, setDraftTimes] = useState<Record<string, string>>({});
+  const [editingSubject, setEditingSubject] = useState<string | null>(null);
   const subjectNames = useMemo(() => Object.keys(subjects).sort((a, b) => a.localeCompare(b)), [subjects]);
-  const reminderCount = Object.values(reminders).reduce((total, times) => total + times.length, 0);
+  const reminderCount = Object.entries(reminders).reduce(
+    (total, [name, times]) => total + (subjects[name] ? times.length : 0),
+    0,
+  );
 
   const updateSubjectTimes = (name: string, times: string[]) => {
     const updated = { ...reminders };
     if (times.length) updated[name] = times;
     else delete updated[name];
     onChange(updated);
-  };
-
-  const addTime = (name: string) => {
-    const time = draftTimes[name];
-    const times = reminders[name] || [];
-    if (!time || times.includes(time) || reminderCount >= MAX_REMINDERS) return;
-    updateSubjectTimes(name, [...times, time].sort());
   };
 
   return (
@@ -57,7 +54,7 @@ export default function ReminderSettingsPopover({
                 <span className="w-9 h-9 rounded-2xl bg-brand-container text-brand flex items-center justify-center"><Bell className="w-4 h-4" /></span>
                 <div>
                   <h3 className="text-sm font-bold text-[#1d1b20] dark:text-white">Customize reminders</h3>
-                  <p className="text-[10px] text-[#625d67] dark:text-[#cac4d0]">Set one or more daily times for each backlog.</p>
+                  <p className="text-[10px] text-[#625d67] dark:text-[#cac4d0]">Choose a time to add and save a daily reminder.</p>
                 </div>
               </div>
               <button type="button" onClick={onClose} aria-label="Close reminders" className="p-2 rounded-full hover:bg-[#f3edf7] dark:hover:bg-[#2b2e38] text-[#625d67] dark:text-[#cac4d0]"><X className="w-4 h-4" /></button>
@@ -86,8 +83,9 @@ export default function ReminderSettingsPopover({
                       </div>
                     )}
                     <div className="flex items-center gap-2 mt-2">
-                      <input type="time" value={draftTimes[name] || ''} onChange={(event) => setDraftTimes((current) => ({ ...current, [name]: event.target.value }))} aria-label={`Reminder time for ${name}`} className="min-h-9 flex-1 rounded-xl border border-[#cac4d0]/35 dark:border-[#454854] bg-white dark:bg-[#17191f] px-2 text-xs text-[#1d1b20] dark:text-white" />
-                      <button type="button" onClick={() => addTime(name)} disabled={!draftTimes[name] || times.includes(draftTimes[name]) || reminderCount >= MAX_REMINDERS} className="min-h-9 px-3 rounded-xl bg-brand text-white dark:text-[#111318] text-[10px] font-bold flex items-center gap-1 disabled:opacity-40"><Plus className="w-3 h-3" /> Add time</button>
+                      <button type="button" onClick={() => setEditingSubject(name)} disabled={reminderCount >= MAX_REMINDERS} aria-label={`Add reminder time for ${name}`} className="min-h-9 flex-1 rounded-xl border border-[#cac4d0]/35 dark:border-[#454854] bg-white dark:bg-[#17191f] px-3 text-left text-xs text-[#1d1b20] dark:text-white flex items-center gap-2 hover:border-brand/50 disabled:opacity-40">
+                        <Clock3 className="w-3.5 h-3.5 text-brand" />Choose a time to add
+                      </button>
                     </div>
                   </section>
                 );
@@ -101,6 +99,20 @@ export default function ReminderSettingsPopover({
           </motion.div>
         </div>
       )}
+      <TimePickerModal
+        isOpen={editingSubject !== null}
+        onClose={() => setEditingSubject(null)}
+        initialTime={editingSubject ? reminders[editingSubject]?.at(-1) || '20:00' : '20:00'}
+        onSave={(time) => {
+          if (editingSubject) {
+            const times = reminders[editingSubject] || [];
+            if (!times.includes(time) && reminderCount < MAX_REMINDERS) {
+              updateSubjectTimes(editingSubject, [...times, time].sort());
+            }
+          }
+          setEditingSubject(null);
+        }}
+      />
     </AnimatePresence>
   );
 }

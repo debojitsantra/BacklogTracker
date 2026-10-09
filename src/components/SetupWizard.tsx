@@ -7,12 +7,14 @@ import React, { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
 import { PRESET_SUBJECTS, PALETTE } from '../data';
-import { AppData, CustomPreset, Subject } from '../types';
+import { AppData, CustomPreset, PresetPreferences, Subject } from '../types';
 import { getLocalDateString } from '../utils/date';
 import { validateAndParseImport } from '../utils/validation';
-import { Plus, Trash2, Palette, Sparkles, AlertCircle, AlertTriangle, CheckCircle, Upload, X, Check, FileJson, CalendarDays, HelpCircle, Clock } from 'lucide-react';
+import { Plus, Trash2, Palette, Sparkles, AlertCircle, AlertTriangle, CheckCircle, Upload, X, Check, FileJson, CalendarDays, HelpCircle, Clock, Bell } from 'lucide-react';
 import TimePickerModal from './TimePickerModal';
+import ReminderSettingsPopover from './ReminderSettingsPopover';
 import { requestExactAlarmPermission, requestNotificationPermission } from '../utils/notifications';
+import { scrollToPageBottomAfterRender } from '../utils/scroll';
 
 const formatTimeTo12Hour = (time24: string): string => {
   if (!time24) return '12:00 AM';
@@ -38,6 +40,7 @@ interface SetupWizardProps {
   initialData: AppData;
   onSave: (data: AppData) => void;
   onCancel?: () => void;
+  onImportFullBackup?: (data: AppData) => void;
   onImportCourseDesign?: (importedData: AppData) => void;
   onOpenHelp?: () => void;
 }
@@ -113,13 +116,39 @@ function resolveScheduleConflicts(importedData: AppData): AppData {
   return { ...importedData, subjects };
 }
 
-export default function SetupWizard({ initialData, onSave, onCancel, onImportCourseDesign, onOpenHelp }: SetupWizardProps) {
+export default function SetupWizard({ initialData, onSave, onCancel, onImportFullBackup, onImportCourseDesign, onOpenHelp }: SetupWizardProps) {
   const [courseName, setCourseName] = useState(initialData.course_name || 'My Backlog Tracker');
   const [classesPerDay, setClassesPerDay] = useState(initialData.classes_per_day || 4);
   const [skipSunday, setSkipSunday] = useState(initialData.skip_sunday !== false);
-  const [autoGrowthEnabled, setAutoGrowthEnabled] = useState(initialData.auto_growth_enabled !== false);
+  const autoGrowthEnabled = true;
   const [notificationEnabled, setNotificationEnabled] = useState(initialData.notification_enabled !== false);
   const [notificationTime, setNotificationTime] = useState(initialData.notification_time || '20:00');
+  const [isReminderMenuOpen, setIsReminderMenuOpen] = useState(false);
+  const [customNotificationsEnabled, setCustomNotificationsEnabled] = useState(initialData.custom_notifications_enabled === true);
+  const [notificationReminders, setNotificationReminders] = useState<Record<string, string[]>>(initialData.notification_reminders || {});
+  const [presetTheme, setPresetTheme] = useState<'dark' | 'light'>(initialData.theme || 'dark');
+  const [paletteColor, setPaletteColor] = useState(initialData.palette_color);
+  const [showQuotes, setShowQuotes] = useState(initialData.show_quotes !== false);
+  const [presetPreferences, setPresetPreferences] = useState<Record<string, PresetPreferences>>(initialData.preset_preferences || {});
+  const [activePresetKey, setActivePresetKey] = useState(() => {
+    const persistedKey = initialData.active_preset_key;
+    if (persistedKey && persistedKey !== 'custom:current') return persistedKey;
+    const builtIn = Object.entries(TRACKING_TYPES).find(([key, type]) => key !== 'custom' && type.title === initialData.course_name);
+    if (builtIn) return `builtin:${builtIn[0]}`;
+    let availableCustomPresets = initialData.custom_presets || [];
+    if (!initialData.custom_presets) {
+      try {
+        const stored = localStorage.getItem('backlog_tracker_custom_presets');
+        const parsed = stored ? JSON.parse(stored) : null;
+        if (Array.isArray(parsed)) availableCustomPresets = parsed;
+      } catch {
+        // Ignore a malformed legacy preset cache during active-preset inference.
+      }
+    }
+    const custom = availableCustomPresets.find(preset => `${preset.name} Backlog` === initialData.course_name || preset.name === initialData.course_name);
+    if (custom) return `custom:${custom.id}`;
+    return persistedKey || (Object.keys(initialData.subjects || {}).length ? 'custom:current' : undefined);
+  });
   const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
 
   const handleNotificationToggle = async () => {
@@ -134,10 +163,20 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     }
     setNotificationEnabled(nextVal);
   };
-  const [activeTrackType, setActiveTrackType] = useState<string | null>(Object.keys(initialData.subjects || {}).length ? 'custom' : null);
+  const [activeTrackType, setActiveTrackType] = useState<string | null>(() => {
+    const presetKey = activePresetKey;
+    if (presetKey?.startsWith('builtin:')) return presetKey.slice('builtin:'.length);
+    if (presetKey?.startsWith('custom:')) return 'custom';
+    const builtIn = Object.entries(TRACKING_TYPES).find(([key, type]) => key !== 'custom' && type.title === initialData.course_name);
+    return builtIn?.[0] || (Object.keys(initialData.subjects || {}).length ? 'custom' : null);
+  });
   const [customCategoryName, setCustomCategoryName] = useState('Custom');
   const [customCategoryEmoji, setCustomCategoryEmoji] = useState('✨');
-  const [activeCustomPresetId, setActiveCustomPresetId] = useState<string | null>(null);
+  const [activeCustomPresetId, setActiveCustomPresetId] = useState<string | null>(() => {
+    return activePresetKey?.startsWith('custom:') && activePresetKey !== 'custom:current'
+      ? activePresetKey.slice('custom:'.length)
+      : null;
+  });
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>(() => {
     let stored: CustomPreset[] = [];
     try {
@@ -223,17 +262,55 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
         perday_type: 'tasks',
         repeat_days: s.repeat_days,
         growth_mode: s.growth_mode,
+        skip_sunday_growth: s.skip_sunday_growth ?? skipSunday,
         completion_mode: s.completion_mode || 'backlog'
       }));
   });
 
   const [editingSubjects, setEditingSubjects] = useState<Subject[]>([]);
+  const editorItemsScrollPendingRef = useRef(false);
+  const lastEditingSubjectRef = useRef<HTMLDivElement>(null);
 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [showEditorHelp, setShowEditorHelp] = useState(false);
   const [activeEmojiIdx, setActiveEmojiIdx] = useState<number | null>(null);
   const [categoryEmojiPickerOpen, setCategoryEmojiPickerOpen] = useState(false);
   const [colorPickerIdx, setColorPickerIdx] = useState<number | null>(null);
+
+  const getCurrentPresetPreferences = (): PresetPreferences => ({
+    theme: presetTheme,
+    palette_color: paletteColor,
+    show_quotes: showQuotes,
+    notification_enabled: notificationEnabled,
+    notification_time: notificationTime,
+    custom_notifications_enabled: customNotificationsEnabled,
+    notification_reminders: notificationReminders,
+  });
+
+  const switchPresetPreferences = (presetKey: string) => {
+    const currentPreferences = getCurrentPresetPreferences();
+    const updated = { ...presetPreferences };
+    if (activePresetKey) updated[activePresetKey] = currentPreferences;
+    const selectedPreferences = { ...currentPreferences, ...updated[presetKey] };
+    updated[presetKey] = selectedPreferences;
+    setPresetPreferences(updated);
+    setActivePresetKey(presetKey);
+    setPresetTheme(selectedPreferences.theme || 'dark');
+    setPaletteColor(selectedPreferences.palette_color);
+    setShowQuotes(selectedPreferences.show_quotes !== false);
+    setNotificationEnabled(selectedPreferences.notification_enabled !== false);
+    setNotificationTime(selectedPreferences.notification_time || '20:00');
+    setCustomNotificationsEnabled(selectedPreferences.custom_notifications_enabled === true);
+    setNotificationReminders(selectedPreferences.notification_reminders || {});
+  };
+
+  useEffect(() => {
+    if (!editorItemsScrollPendingRef.current) return;
+    editorItemsScrollPendingRef.current = false;
+    window.requestAnimationFrame(() => {
+      lastEditingSubjectRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }, [editingSubjects.length]);
 
   const [showImportPanel, setShowImportPanel] = useState(false);
   const [importText, setImportText] = useState('');
@@ -245,6 +322,9 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
   } | null>(null);
   const [pendingFullBackup, setPendingFullBackup] = useState<AppData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const reminderSubjects = Object.fromEntries(
+    customSubjects.filter(subject => subject.name.trim()).map(subject => [subject.name, subject]),
+  ) as Record<string, Subject>;
 
   useEffect(() => {
     const handleBackButton = () => {
@@ -328,19 +408,20 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
 
   const selectTrackingType = (key: string) => {
     const template = TRACKING_TYPES[key];
+    switchPresetPreferences(key === 'custom' ? 'custom:new' : `builtin:${key}`);
     setActiveTrackType(key);
     setActiveCustomPresetId(null);
     setAddingCustomName(false);
     setNewCustomName('');
 
     if (key === 'custom') {
-      setCustomCategoryName('Custom');
-      setCustomCategoryEmoji('✨');
+    setCustomCategoryName('Custom');
+      setCustomCategoryEmoji(POPULAR_EMOJIS[Math.floor(Math.random() * POPULAR_EMOJIS.length)]);
       setActiveCustomPresetId(null);
       setIsNamingCustomCategory(false);
       setEditingSubjects([]);
       setCustomSubjects([]);
-      setEditorOpen(false);
+      setEditorOpen(true);
       window.dispatchEvent(new Event('tracker-tracking-type-selected'));
       return;
     }
@@ -369,6 +450,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
   };
 
   const selectCustomPreset = (preset: CustomPreset) => {
+    switchPresetPreferences(`custom:${preset.id}`);
     setActiveTrackType('custom');
     setActiveCustomPresetId(preset.id);
     setCustomCategoryName(preset.name);
@@ -392,6 +474,14 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       emoji: customCategoryEmoji.trim() || '✨',
       entries: usableEntries
     };
+    const nextPresetKey = `custom:${preset.id}`;
+    const updatedPreferences = { ...presetPreferences };
+    if (activePresetKey && activePresetKey !== nextPresetKey && updatedPreferences[activePresetKey]) {
+      updatedPreferences[nextPresetKey] = updatedPreferences[activePresetKey];
+      delete updatedPreferences[activePresetKey];
+      setPresetPreferences(updatedPreferences);
+    }
+    setActivePresetKey(nextPresetKey);
     const index = customPresets.findIndex(item => item.id === preset.id);
     const updated = index === -1
       ? [...customPresets, preset]
@@ -559,6 +649,10 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
         setSkipSunday(parsedData.skip_sunday);
       }
 
+      switchPresetPreferences('custom:new');
+      setActiveCustomPresetId(null);
+      setCustomCategoryName((parsedData.course_name || 'Custom').replace(/\s+Backlog$/i, '') || 'Custom');
+
       const importedSubjects = parsedData.subjects || {};
       const newCustomSubjects = [...customSubjects];
 
@@ -573,6 +667,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
           perday_type: 'tasks',
           repeat_days: sub.repeat_days,
           growth_mode: sub.growth_mode || (sub.repeat_days?.length ? 'repeat' : sub.daily_increase > 0 ? 'perday' : 'none'),
+          skip_sunday_growth: sub.skip_sunday_growth ?? parsedData.skip_sunday ?? true,
           completion_mode: sub.completion_mode || 'backlog'
         };
         if (existingCustomIdx === -1) {
@@ -598,6 +693,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     setShowImportPanel(false);
     setImportText('');
     setImportValidation(null);
+    scrollToPageBottomAfterRender();
   };
 
   const confirmFullBackupImport = () => {
@@ -606,7 +702,9 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     setShowImportPanel(false);
     setImportText('');
     setImportValidation(null);
-    onSave(pendingFullBackup);
+    if (onImportFullBackup) onImportFullBackup(pendingFullBackup);
+    else onSave(pendingFullBackup);
+    scrollToPageBottomAfterRender();
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -627,7 +725,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       if (consolidatedSubjects[trimmedName]) {
         hasDuplicateEntry = true;
       }
-      const mode = autoGrowthEnabled ? (s.growth_mode || (s.repeat_days?.length ? 'repeat' : s.daily_increase > 0 ? 'perday' : 'none')) : 'none';
+      const mode = s.growth_mode || (s.repeat_days?.length ? 'repeat' : s.daily_increase > 0 ? 'perday' : 'none');
       const isTodo = (s.completion_mode || 'backlog') === 'todo';
       const rawBacklog = Math.max(0, s.backlog);
       const safeBacklog = isTodo ? Math.min(1, rawBacklog) : rawBacklog;
@@ -641,6 +739,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
         perday_type: mode === 'perday' ? 'tasks' : undefined,
         repeat_days: mode === 'repeat' && s.repeat_days?.length ? s.repeat_days : undefined,
         growth_mode: mode,
+        skip_sunday_growth: s.skip_sunday_growth ?? skipSunday,
         completion_mode: s.completion_mode || 'backlog'
       };
     });
@@ -666,11 +765,14 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
     }
 
     const todayString = getLocalDateString();
+    const savedCustomPresetId = activeTrackType === 'custom'
+      ? activeCustomPresetId || `custom-${Date.now()}`
+      : null;
 
     const updatedCustomPresets = activeTrackType === 'custom'
       ? (() => {
         const preset: CustomPreset = {
-          id: activeCustomPresetId || `custom-${Date.now()}`,
+          id: savedCustomPresetId!,
           name: customCategoryName.trim() || 'Custom',
           emoji: customCategoryEmoji.trim() || '✨',
           entries: Object.values(consolidatedSubjects).map(subject => ({ ...subject, repeat_days: subject.repeat_days ? [...subject.repeat_days] : undefined }))
@@ -681,6 +783,16 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       })()
       : customPresets;
 
+    const savedActivePresetKey = savedCustomPresetId
+      ? `custom:${savedCustomPresetId}`
+      : activePresetKey;
+    const savedPresetPreferences = { ...presetPreferences };
+    if (activePresetKey) savedPresetPreferences[activePresetKey] = getCurrentPresetPreferences();
+    if (savedActivePresetKey && savedActivePresetKey !== activePresetKey && activePresetKey) {
+      savedPresetPreferences[savedActivePresetKey] = savedPresetPreferences[activePresetKey];
+      delete savedPresetPreferences[activePresetKey];
+    }
+
     localStorage.setItem('backlog_tracker_custom_presets', JSON.stringify(updatedCustomPresets));
 
     onSave({
@@ -690,13 +802,18 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
       course_name: courseName.trim() || 'My Backlog Tracker',
       last_updated: initialData.last_updated || todayString,
       setup_done: true,
-      theme: initialData.theme || 'dark',
-      palette_color: initialData.palette_color,
-      auto_growth_enabled: autoGrowthEnabled,
+      theme: presetTheme,
+      palette_color: paletteColor,
+      show_quotes: showQuotes,
+      auto_growth_enabled: true,
       notification_enabled: notificationEnabled,
       notification_time: notificationTime,
+      custom_notifications_enabled: customNotificationsEnabled,
+      notification_reminders: notificationReminders,
       custom_presets: updatedCustomPresets,
-      preset_overrides: presetOverrides
+      preset_overrides: presetOverrides,
+      preset_preferences: savedPresetPreferences,
+      active_preset_key: savedActivePresetKey
     });
   };
 
@@ -766,14 +883,6 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                     <FileJson className="w-4 h-4 text-brand" />
                     <h3 className="text-xs font-bold text-brand uppercase tracking-wider">Import Template JSON</h3>
                   </div>
-                  <a
-                    href="https://backlogdesigner.pages.dev"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] font-bold text-brand bg-brand-container hover:bg-brand-container-hover px-3 py-1.5 rounded-full border border-brand/20 transition-all text-center inline-block"
-                  >
-                    Download Templates 🌐
-                  </a>
                 </div>
 
                 <button
@@ -894,24 +1003,6 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
             </h2>
 
 
-            <div className="flex items-center justify-between bg-brand-container p-3 rounded-xl border border-[#cac4d0]/20 dark:border-brand-container/60">
-              <div className="flex flex-col pr-4">
-                <span className="text-xs font-bold text-[#1d1b20] dark:text-white">Auto growth rules</span>
-                <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">When off, schedules are paused and schedule fields are hidden.</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAutoGrowthEnabled(!autoGrowthEnabled)}
-                className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 outline-none ${autoGrowthEnabled ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'
-                  }`}
-              >
-                <div
-                  className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${autoGrowthEnabled ? 'translate-x-6' : 'translate-x-0'
-                    }`}
-                />
-              </button>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold">Tracker Name</label>
@@ -939,25 +1030,6 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
               </div>
             </div>
 
-            {autoGrowthEnabled && (
-              <div className="flex items-center justify-between bg-brand-container p-3 rounded-xl border border-[#cac4d0]/20 dark:border-brand-container/60">
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-[#1d1b20] dark:text-white">Skip Sunday auto-growth</span>
-                  <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Pauses daily (+per day) growth on Sundays. Does not affect repeat-days schedules.</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSkipSunday(!skipSunday)}
-                  className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 outline-none ${skipSunday ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'
-                    }`}
-                >
-                  <div
-                    className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${skipSunday ? 'translate-x-6' : 'translate-x-0'
-                      }`}
-                  />
-                </button>
-              </div>
-            )}
           </div>
 
           <div className="space-y-4">
@@ -984,21 +1056,53 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
             </div>
 
             {notificationEnabled && (
-              <div className="flex flex-col sm:flex-row items-center justify-between bg-brand-container p-3 rounded-xl border border-[#cac4d0]/20 dark:border-brand-container/60 gap-3">
-                <div className="flex flex-col pr-4 text-center sm:text-left">
-                  <span className="text-xs font-bold text-[#1d1b20] dark:text-white">Set Reminder Time</span>
-                  <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Tap to choose your notification time.</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between bg-brand-container p-3 rounded-xl border border-[#cac4d0]/20 dark:border-brand-container/60 gap-3">
+                  <div className="flex flex-col flex-1 pr-2">
+                    <div className="flex items-center gap-1.5">
+                      <Bell className="w-3.5 h-3.5 text-brand" />
+                      <span className="text-xs font-bold text-[#1d1b20] dark:text-white">Custom per-backlog reminders</span>
+                    </div>
+                    <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Replace the combined reminder with individual schedules.</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={customNotificationsEnabled}
+                    aria-label="Use custom per-backlog reminders"
+                    onClick={() => setCustomNotificationsEnabled(value => !value)}
+                    className={`w-12 h-6 flex-shrink-0 rounded-full p-1 transition-colors duration-200 ${customNotificationsEnabled ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'}`}
+                  >
+                    <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${customNotificationsEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsTimePickerOpen(true)}
-                  className="flex items-center gap-2 bg-white dark:bg-[#1a1c22]/40 px-3.5 py-2 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 cursor-pointer relative hover:border-brand/40 transition-all focus:outline-none"
-                >
-                  <Clock className="w-4 h-4 text-brand" />
-                  <span className="text-sm font-bold text-[#1d1b20] dark:text-white font-mono">
-                    {formatTimeTo12Hour(notificationTime)}
-                  </span>
-                </button>
+
+                {customNotificationsEnabled ? (
+                  <div className="flex items-center justify-between bg-brand-container p-3 rounded-xl border border-[#cac4d0]/20 dark:border-brand-container/60 gap-3">
+                    <div className="flex flex-col pr-2">
+                      <span className="text-xs font-bold text-[#1d1b20] dark:text-white">Backlog reminders</span>
+                      <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Set one or more times for each item.</span>
+                    </div>
+                    <button type="button" onClick={() => setIsReminderMenuOpen(true)} className="px-3 py-2 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 bg-white dark:bg-[#1a1c22]/40 text-xs font-bold text-brand hover:border-brand/40 transition-all">
+                      Customize
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center justify-between bg-brand-container p-3 rounded-xl border border-[#cac4d0]/20 dark:border-brand-container/60 gap-3">
+                    <div className="flex flex-col pr-4 text-center sm:text-left">
+                      <span className="text-xs font-bold text-[#1d1b20] dark:text-white">Combined daily reminder</span>
+                      <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">One notification with your total backlog count.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsTimePickerOpen(true)}
+                      className="flex items-center gap-2 bg-white dark:bg-[#1a1c22]/40 px-3.5 py-2 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 cursor-pointer hover:border-brand/40 transition-all"
+                    >
+                      <Clock className="w-4 h-4 text-brand" />
+                      <span className="text-sm font-bold text-[#1d1b20] dark:text-white font-mono">{formatTimeTo12Hour(notificationTime)}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1196,7 +1300,8 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                         type="button"
                         onClick={() => {
                           const newColor = PALETTE[editingSubjects.length % PALETTE.length];
-                          setEditingSubjects(prev => [...prev, { name: '', emoji: '📚', color: newColor, backlog: 0, daily_increase: 1, perday_type: 'tasks', growth_mode: 'none' as const, completion_mode: 'backlog' as const }]);
+                          editorItemsScrollPendingRef.current = true;
+                          setEditingSubjects(prev => [...prev, { name: '', emoji: '📚', color: newColor, backlog: 0, daily_increase: 1, perday_type: 'tasks', growth_mode: 'none' as const, skip_sunday_growth: true, completion_mode: 'backlog' as const }]);
                         }}
                         className="px-3 py-2 rounded-full bg-brand-container hover:bg-brand-container-hover text-brand border border-[#cac4d0]/30 dark:border-[#24262f] text-xs font-bold flex items-center gap-1"
                         title="Add custom entry"
@@ -1356,6 +1461,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                         const isTodoEntry = sub.completion_mode === 'todo';
                         return (
                           <motion.div
+                            ref={idx === editingSubjects.length - 1 ? lastEditingSubjectRef : undefined}
                             initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
                             key={`editing-sub-${idx}`}
@@ -1522,6 +1628,17 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                                       </div>
                                     </>
                                   )}
+                                  {editMode === 'perday' && (
+                                    <label className="flex items-center justify-between gap-2 rounded-lg bg-brand-container/70 px-2 py-1.5 text-[10px] font-semibold text-[#49454f] dark:text-[#cac4d0]">
+                                      <span>Skip Sundays for this item</span>
+                                      <input
+                                        type="checkbox"
+                                        checked={sub.skip_sunday_growth ?? skipSunday}
+                                        onChange={event => updateEditingSubject(idx, { skip_sunday_growth: event.target.checked })}
+                                        className="accent-[var(--brand)]"
+                                      />
+                                    </label>
+                                  )}
                                 </div>
                               )}
                               </div>
@@ -1537,6 +1654,19 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                   <button
                     type="button"
                     onClick={() => {
+                      const nextReminderMap = { ...notificationReminders };
+                      customSubjects.forEach((previous, index) => {
+                        const nextName = editingSubjects[index]?.name.trim();
+                        if (nextName && previous.name !== nextName && nextReminderMap[previous.name]) {
+                          if (!nextReminderMap[nextName]) nextReminderMap[nextName] = nextReminderMap[previous.name];
+                          delete nextReminderMap[previous.name];
+                        }
+                      });
+                      const nextNames = new Set(editingSubjects.map(subject => subject.name.trim()).filter(Boolean));
+                      Object.keys(nextReminderMap).forEach(name => {
+                        if (!nextNames.has(name)) delete nextReminderMap[name];
+                      });
+                      setNotificationReminders(nextReminderMap);
                       setCustomSubjects([...editingSubjects]);
 
                       if (activeTrackType) {
@@ -1659,7 +1789,7 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
                   </div>
                   <h3 id="backup-warning-title" className="mt-4 text-base font-bold text-[#1d1b20] dark:text-white">Replace current tracker?</h3>
                   <p className="mt-2 text-xs leading-relaxed text-[#49454f] dark:text-[#cac4d0]">
-                    This full backup will replace your current tracker name, items, progress, schedules, and saved presets. This cannot be undone from the app.
+                    This full backup will replace your tracker name, items, progress, reminders, appearance settings, quotes preference, and saved presets. This cannot be undone from the app.
                   </p>
                   <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/7 dark:bg-red-400/10 px-3 py-2.5 text-[11px] font-semibold text-red-700 dark:text-red-300">
                     Backup: {pendingFullBackup.course_name || 'Untitled tracker'} · {Object.keys(pendingFullBackup.subjects || {}).length} items
@@ -1679,6 +1809,13 @@ export default function SetupWizard({ initialData, onSave, onCancel, onImportCou
           onClose={() => setIsTimePickerOpen(false)}
           initialTime={notificationTime}
           onSave={(time) => setNotificationTime(time)}
+        />
+        <ReminderSettingsPopover
+          isOpen={isReminderMenuOpen}
+          subjects={reminderSubjects}
+          reminders={notificationReminders}
+          onChange={setNotificationReminders}
+          onClose={() => setIsReminderMenuOpen(false)}
         />
       </motion.div>
     </div>

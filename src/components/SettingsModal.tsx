@@ -15,11 +15,8 @@ import {
   Download,
   Upload,
   Check,
-  Palette,
   AlertCircle,
   AlertTriangle,
-  Eye,
-  EyeOff,
   CalendarDays,
   FileJson,
   User,
@@ -27,12 +24,26 @@ import {
   Heart,
   Award,
   HelpCircle,
-  Bell
+  Bell,
+  Clock
 } from 'lucide-react';
 import { AppData } from '../types';
 import { validateAndParseImport } from '../utils/validation';
+import ColorCustomizationPopover from './ColorCustomizationPopover';
 import ReminderSettingsPopover from './ReminderSettingsPopover';
-import { requestExactAlarmPermission, requestNotificationPermission } from '../utils/notifications';
+import TimePickerModal from './TimePickerModal';
+import { isTauriDesktopRuntime, requestExactAlarmPermission, requestNotificationPermission } from '../utils/notifications';
+import { scrollToPageBottomAfterRender } from '../utils/scroll';
+
+const formatTimeTo12Hour = (time24: string): string => {
+  if (!time24) return '12:00 AM';
+  const [hStr, mStr] = time24.split(':');
+  const h = Number.parseInt(hStr, 10);
+  if (Number.isNaN(h)) return time24;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 || 12;
+  return `${String(hour12).padStart(2, '0')}:${mStr} ${period}`;
+};
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -48,21 +59,6 @@ interface SettingsModalProps {
   onOpenConfiguration: () => void;
   onOpenHelp: () => void;
 }
-
-const COLOR_PRESETS = [
-  { name: 'Classic Purple', hex: '#6750a4' },
-  { name: 'Teal Forest', hex: '#006a6a' },
-  { name: 'Crimson Fire', hex: '#ba1a1a' },
-  { name: 'Ocean Blue', hex: '#0277bd' },
-  { name: 'Sunset Orange', hex: '#d84315' },
-  { name: 'Emerald Green', hex: '#2e7d32' },
-  { name: 'Royal Violet', hex: '#7b1fa2' },
-  { name: 'Deep Indigo', hex: '#3f51b5' },
-  { name: 'Rose Pink', hex: '#d81b60' },
-  { name: 'Golden Amber', hex: '#ff8f00' },
-  { name: 'Soot Black', hex: '#111111' },
-  { name: 'Charred Cinder', hex: '#000000' }
-];
 
 // Register the custom native Download plugin
 interface DownloadPlugin {
@@ -87,8 +83,10 @@ export default function SettingsModal({
   const [activeTab, setActiveTab] = useState<'customization' | 'backup'>('customization');
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
 
-  const [selectedColor, setSelectedColor] = useState(data.palette_color || '#6750a4');
+  const selectedColor = data.palette_color || '#6750a4';
+  const [isColorMenuOpen, setIsColorMenuOpen] = useState(false);
   const [isReminderMenuOpen, setIsReminderMenuOpen] = useState(false);
+  const [isTimePickerOpen, setIsTimePickerOpen] = useState(false);
 
   const [importText, setImportText] = useState('');
   const [validationMessage, setValidationMessage] = useState<{
@@ -102,17 +100,9 @@ export default function SettingsModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleColorChange = (hex: string) => {
-    setSelectedColor(hex);
     onUpdateData({
       ...data,
       palette_color: hex
-    });
-  };
-
-  const handleSkipSundayChange = (val: boolean) => {
-    onUpdateData({
-      ...data,
-      skip_sunday: val
     });
   };
 
@@ -139,6 +129,14 @@ export default function SettingsModal({
       ...data,
       notification_reminders: reminders
     });
+  };
+
+  const handleNotificationTimeChange = (time: string) => {
+    onUpdateData({ ...data, notification_time: time });
+  };
+
+  const handleCustomNotificationsChange = (enabled: boolean) => {
+    onUpdateData({ ...data, custom_notifications_enabled: enabled });
   };
 
 
@@ -198,7 +196,8 @@ export default function SettingsModal({
       cleanItems[name] = {
         emoji: sub.emoji,
         color: sub.color,
-        growth_mode: mode
+        growth_mode: mode,
+        skip_sunday_growth: sub.skip_sunday_growth ?? data.skip_sunday
       };
       if (sub.completion_mode) {
         cleanItems[name].completion_mode = sub.completion_mode;
@@ -227,6 +226,13 @@ export default function SettingsModal({
   const handleExportFullBackup = () => {
     const exportObj = {
       ...data,
+      palette_color: data.palette_color || selectedColor,
+      show_quotes: showQuotes,
+      notification_enabled: data.notification_enabled === true,
+      notification_time: data.notification_time || '20:00',
+      custom_notifications_enabled: data.custom_notifications_enabled === true,
+      notification_reminders: data.notification_reminders || {},
+      preset_preferences: data.preset_preferences || {},
       schemaVersion: 1,
       exportType: 'full_backup'
     };
@@ -248,13 +254,6 @@ export default function SettingsModal({
         text: result.error || 'Invalid JSON input data.'
       });
     }
-  };
-
-  const handleAutoGrowthChange = (val: boolean) => {
-    onUpdateData({
-      ...data,
-      auto_growth_enabled: val
-    });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -290,6 +289,7 @@ export default function SettingsModal({
     if (validationMessage.type === 'course_design') {
       onImportCourseDesign(parsedData);
       onClose();
+      scrollToPageBottomAfterRender();
     } else {
       setPendingFullBackup(parsedData);
     }
@@ -300,6 +300,7 @@ export default function SettingsModal({
     onImportFullBackup(pendingFullBackup);
     setPendingFullBackup(null);
     onClose();
+    scrollToPageBottomAfterRender();
   };
 
   if (!isOpen) return null;
@@ -350,7 +351,7 @@ export default function SettingsModal({
           {activeTab === 'customization' ? (
             <>
               <div className="space-y-2">
-                <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">App Layout Theme</label>
+                <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">Theme and Customization</label>
                 <div className="flex items-center justify-between p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
                   <div className="flex flex-col">
                     <span className="text-xs font-bold">Dark mode</span>
@@ -368,6 +369,37 @@ export default function SettingsModal({
                     />
                   </button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsColorMenuOpen(true)}
+                  className="w-full flex items-center justify-between gap-3 p-3 bg-brand-container hover:bg-brand-container-hover rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60 text-left transition-all"
+                >
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-brand">Customization</span>
+                    <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Choose your app color</span>
+                  </div>
+                  <span className="w-5 h-5 rounded-full border border-black/10 dark:border-white/20" style={{ backgroundColor: selectedColor }} />
+                </button>
+
+                <div className="flex items-center justify-between p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold">Show Quotes</span>
+                    <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Display the motivational quote panel on the dashboard</span>
+                  </div>
+                  <button
+                    onClick={() => onToggleQuotes(!showQuotes)}
+                    type="button"
+                    role="switch"
+                    aria-checked={showQuotes}
+                    aria-label="Show Quotes"
+                    className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 cursor-pointer ${showQuotes ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'
+                      }`}
+                  >
+                    <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${showQuotes ? 'translate-x-6' : 'translate-x-0'
+                      }`} />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -383,80 +415,6 @@ export default function SettingsModal({
                   </div>
                   <Sliders className="w-4 h-4 text-brand flex-shrink-0" />
                 </button>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center gap-1.5">
-                  <Palette className="w-4 h-4 text-brand" />
-                  <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">App Color Customization</label>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {COLOR_PRESETS.map((color) => {
-                    const isSelected = selectedColor.toLowerCase() === color.hex.toLowerCase();
-                    return (
-                      <button
-                        key={color.name}
-                        onClick={() => handleColorChange(color.hex)}
-                        className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all text-left cursor-pointer ${isSelected
-                          ? 'bg-[#f3edf7] dark:bg-[#24262f] border-brand shadow-sm font-bold'
-                          : 'bg-white dark:bg-[#1a1c22]/40 border-[#cac4d0]/30 dark:border-[#24262f]/60 hover:border-brand/40'
-                          }`}
-                      >
-                        <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color.hex }} />
-                        <span className="text-xs truncate">{color.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">Auto Growth</label>
-                <div className="flex items-center justify-between p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
-                  <div className="flex flex-col flex-1 pr-4">
-                    <div className="flex items-center gap-1">
-                      <CalendarDays className="w-3.5 h-3.5 text-brand" />
-                      <span className="text-xs font-bold">Auto growth rules</span>
-                    </div>
-                    <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Pause or resume all scheduled backlog increases</span>
-                  </div>
-                  <button
-                    onClick={() => handleAutoGrowthChange(data.auto_growth_enabled === false)}
-                    type="button"
-                    className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 cursor-pointer ${data.auto_growth_enabled !== false ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'
-                      }`}
-                  >
-                    <div
-                      className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${data.auto_growth_enabled !== false ? 'translate-x-6' : 'translate-x-0'
-                        }`}
-                    />
-                  </button>
-                </div>
-
-                {data.auto_growth_enabled !== false && (
-                <div className="flex items-center justify-between p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
-                  <div className="flex flex-col flex-1 pr-4">
-                    <div className="flex items-center gap-1">
-                      <CalendarDays className="w-3.5 h-3.5 text-brand" />
-                      <span className="text-xs font-bold">Skip Sunday in backlog growth</span>
-                    </div>
-                    <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Pauses daily (+per day) growth on Sundays. Does not affect repeat-days schedules.</span>
-                  </div>
-                  <button
-                    onClick={() => handleSkipSundayChange(!data.skip_sunday)}
-                    type="button"
-                    className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 cursor-pointer ${data.skip_sunday ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'
-                      }`}
-                  >
-                    <div
-                      className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${data.skip_sunday ? 'translate-x-6' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-                )}
               </div>
 
               <div className="space-y-2">
@@ -481,49 +439,70 @@ export default function SettingsModal({
                     />
                   </button>
                 </div>
+                {!Capacitor.isNativePlatform() && (
+                  <p className="px-1 text-[10px] text-[#625d67] dark:text-[#aaa5b0]">
+                    {isTauriDesktopRuntime()
+                      ? 'Desktop reminders need the app running. Closing the window keeps it in the system tray.'
+                      : 'Browser reminders need this page to remain open.'}
+                  </p>
+                )}
 
                 {data.notification_enabled === true && (
-                  <div className="flex items-center justify-between gap-3 p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
-                    <div className="flex flex-col flex-1 pr-4">
-                      <div className="flex items-center gap-1">
-                        <Bell className="w-3.5 h-3.5 text-brand" />
-                        <span className="text-xs font-bold">Backlog reminders</span>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
+                      <div className="flex flex-col flex-1 pr-4">
+                        <div className="flex items-center gap-1">
+                          <Bell className="w-3.5 h-3.5 text-brand" />
+                          <span className="text-xs font-bold">Custom per-backlog reminders</span>
+                        </div>
+                        <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Replace the combined daily reminder with individual schedules</span>
                       </div>
-                      <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Choose one or more times for each backlog</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={data.custom_notifications_enabled === true}
+                        aria-label="Use custom per-backlog reminders"
+                        onClick={() => handleCustomNotificationsChange(data.custom_notifications_enabled !== true)}
+                        className={`w-12 h-6 flex-shrink-0 rounded-full p-1 transition-colors duration-200 cursor-pointer ${data.custom_notifications_enabled === true ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'}`}
+                      >
+                        <div className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${data.custom_notifications_enabled === true ? 'translate-x-6' : 'translate-x-0'}`} />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsReminderMenuOpen(true)}
-                      className="flex-shrink-0 flex items-center gap-2 bg-white dark:bg-[#1a1c22]/40 px-3 py-2 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 cursor-pointer hover:border-brand/40 transition-all focus:outline-none text-xs font-bold text-brand"
-                    >
-                      Customize
-                    </button>
+
+                    {data.custom_notifications_enabled === true ? (
+                      <div className="flex items-center justify-between gap-3 p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
+                        <div className="flex flex-col flex-1 pr-4">
+                          <span className="text-xs font-bold">Backlog reminders</span>
+                          <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Choose one or more times for each backlog</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsReminderMenuOpen(true)}
+                          className="flex-shrink-0 px-3 py-2 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 bg-white dark:bg-[#1a1c22]/40 hover:border-brand/40 transition-all text-xs font-bold text-brand"
+                        >
+                          Customize
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3 p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
+                        <div className="flex flex-col flex-1 pr-4">
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-brand" />
+                            <span className="text-xs font-bold">Combined daily reminder</span>
+                          </div>
+                          <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">One notification with your total backlog count</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsTimePickerOpen(true)}
+                          className="flex-shrink-0 px-3 py-2 rounded-xl border border-[#cac4d0]/30 dark:border-[#24262f]/60 bg-white dark:bg-[#1a1c22]/40 hover:border-brand/40 transition-all text-xs font-bold text-[#1d1b20] dark:text-white font-mono"
+                        >
+                          {formatTimeTo12Hour(data.notification_time || '20:00')}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs text-[#49454f] dark:text-[#cac4d0] font-bold uppercase tracking-wider block">Dashboard Layout</label>
-                <div className="flex items-center justify-between p-3 bg-[#f3edf7]/50 dark:bg-[#24262f]/40 rounded-2xl border border-[#cac4d0]/20 dark:border-[#24262f]/60">
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-1">
-                      {showQuotes ? <Eye className="w-3.5 h-3.5 text-brand" /> : <EyeOff className="w-3.5 h-3.5 text-brand" />}
-                      <span className="text-xs font-bold">Show Daily Fire Quotes Board</span>
-                    </div>
-                    <span className="text-[10px] text-[#49454f] dark:text-[#cac4d0]">Display the motivational quote panel on top of the dashboard</span>
-                  </div>
-                  <button
-                    onClick={() => onToggleQuotes(!showQuotes)}
-                    type="button"
-                    className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 cursor-pointer ${showQuotes ? 'bg-brand' : 'bg-neutral-300 dark:bg-neutral-805'
-                      }`}
-                  >
-                    <div
-                      className={`bg-white w-4 h-4 rounded-full shadow-sm transform duration-200 ${showQuotes ? 'translate-x-6' : 'translate-x-0'
-                        }`}
-                    />
-                  </button>
-                </div>
               </div>
 
               <div className="space-y-2 border-t border-[#cac4d0]/20 dark:border-[#24262f]/60 pt-4">
@@ -766,7 +745,7 @@ export default function SettingsModal({
                 </div>
                 <h3 id="settings-backup-warning-title" className="mt-4 text-base font-bold">Replace current tracker?</h3>
                 <p className="mt-2 text-xs leading-relaxed text-[#49454f] dark:text-[#cac4d0]">
-                  This backup will replace your tracker name, items, progress, schedules, and saved presets. This cannot be undone from the app.
+                  This backup will replace your tracker name, items, progress, reminders, appearance settings, quotes preference, and saved presets. This cannot be undone from the app.
                 </p>
                 <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/7 dark:bg-red-400/10 px-3 py-2.5 text-[11px] font-semibold text-red-700 dark:text-red-300">
                   Backup: {pendingFullBackup.course_name || 'Untitled tracker'} · {Object.keys(pendingFullBackup.subjects || {}).length} items
@@ -782,11 +761,25 @@ export default function SettingsModal({
       </AnimatePresence>
 
       <ReminderSettingsPopover
-        isOpen={isReminderMenuOpen}
+        isOpen={isReminderMenuOpen && data.custom_notifications_enabled === true}
         subjects={data.subjects}
         reminders={data.notification_reminders || {}}
         onChange={handleNotificationRemindersChange}
         onClose={() => setIsReminderMenuOpen(false)}
+      />
+
+      <TimePickerModal
+        isOpen={isTimePickerOpen}
+        onClose={() => setIsTimePickerOpen(false)}
+        initialTime={data.notification_time || '20:00'}
+        onSave={handleNotificationTimeChange}
+      />
+
+      <ColorCustomizationPopover
+        isOpen={isColorMenuOpen}
+        selectedColor={selectedColor}
+        onSelect={handleColorChange}
+        onClose={() => setIsColorMenuOpen(false)}
       />
 
     </div>

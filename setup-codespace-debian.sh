@@ -45,7 +45,7 @@ grep -qxF 'export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$AN
   echo 'export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH' >> ~/.bashrc
 
 cd ~
-cd BacklogTracker
+cd j/BacklogTracker
 
 echo "==> Installing npm dependencies"
 npm ci
@@ -57,7 +57,7 @@ echo "==> Syncing Capacitor"
 npx cap sync android
 
 echo "==> Writing local.properties"
-echo "sdk.dir=$HOME/android-sdk" > $HOME/BacklogTracker/android/local.properties
+echo "sdk.dir=$HOME/android-sdk" > $HOME/j/BacklogTracker/android/local.properties
 
 echo "==> Building debug APK"
 cd android
@@ -65,5 +65,5 @@ cd android
 
 echo ""
 echo "==> Moving apk to" $HOME
-mv $HOME/BacklogTracker/android/app/build/outputs/apk/debug/*.apk $HOME
+mv $HOME/j/BacklogTracker/android/app/build/outputs/apk/debug/*.apk $HOME
 echo "Done."

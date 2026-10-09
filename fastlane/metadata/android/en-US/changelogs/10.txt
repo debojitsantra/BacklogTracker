@@ -1,0 +1,5 @@
+Added per-backlog multi-time reminders, combined reminders.
+Backups preserve preset reminders, colors, quotes, and schedules;
+Growth and Sunday skips are now per item.
+Some QoL changes
+Version 1.2.8 (code 10).

@@ -9,7 +9,7 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 nvm use 22
 
-cd $HOME/BacklogTracker
+cd $HOME/j/BacklogTracker
 
 echo "==> Installing npm dependencies"
 npm ci
@@ -21,13 +21,13 @@ echo "==> Syncing Capacitor"
 npx cap sync android
 
 echo "==> Writing local.properties"
-echo "sdk.dir=$ANDROID_HOME" > $HOME/BacklogTracker/android/local.properties
+echo "sdk.dir=$ANDROID_HOME" > $HOME/j/BacklogTracker/android/local.properties
 
 echo "==> Building debug APK"
 cd android
 ./gradlew assembleDebug
 
 echo "==> Moving apk to" $HOME
-mv $HOME/BacklogTracker/android/app/build/outputs/apk/debug/*.apk /mnt/c/Users/USER/Downloads
+mv $HOME/j/BacklogTracker/android/app/build/outputs/apk/debug/*.apk /mnt/c/Users/USER/Downloads
 echo ""
 echo "Done."

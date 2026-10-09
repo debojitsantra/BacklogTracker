@@ -12,6 +12,10 @@ function hasTauriRuntime(): boolean {
   );
 }
 
+export function isTauriDesktopRuntime(): boolean {
+  return hasTauriRuntime() && !Capacitor.isNativePlatform();
+}
+
 // Dynamically import Tauri Notification plugin only when running inside Tauri
 const getTauriNotification = async (): Promise<TauriNotificationApi | null> => {
   if (!hasTauriRuntime()) return null;
@@ -123,8 +127,30 @@ const MAX_SCHEDULED_REMINDERS = 500;
 const REMINDER_ID_BASE = 1000;
 const SCHEDULED_REMINDER_IDS = Array.from({ length: MAX_SCHEDULED_REMINDERS }, (_, index) => ({ id: REMINDER_ID_BASE + index }));
 
-export async function syncScheduledNotifications(
+let notificationSyncQueue: Promise<void> = Promise.resolve();
+
+export function syncScheduledNotifications(
   enabled: boolean,
+  customRemindersEnabled: boolean,
+  reminders: Record<string, string[]> | undefined,
+  subjects: Record<string, { name: string; emoji: string; backlog: number }>,
+  legacyTime?: string,
+): Promise<void> {
+  const syncTask = notificationSyncQueue.then(() => syncScheduledNotificationsNow(
+    enabled,
+    customRemindersEnabled,
+    reminders,
+    subjects,
+    legacyTime,
+  ));
+  // Keep the queue usable if a future implementation lets an error escape.
+  notificationSyncQueue = syncTask.catch(() => undefined);
+  return syncTask;
+}
+
+async function syncScheduledNotificationsNow(
+  enabled: boolean,
+  customRemindersEnabled: boolean,
   reminders: Record<string, string[]> | undefined,
   subjects: Record<string, { name: string; emoji: string; backlog: number }>,
   legacyTime?: string,
@@ -149,7 +175,7 @@ export async function syncScheduledNotifications(
         }
 
         const scheduled = [];
-        if (reminders === undefined && legacyTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(legacyTime)) {
+        if (!customRemindersEnabled && legacyTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(legacyTime)) {
           const [hours, minutes] = legacyTime.split(':').map(Number);
           const backlogCount = Object.values(subjects).reduce((sum, subject) => sum + (subject.backlog || 0), 0);
           scheduled.push({
@@ -159,7 +185,7 @@ export async function syncScheduledNotifications(
             channelId: 'daily-reminder',
             schedule: { on: { hour: hours, minute: minutes }, allowWhileIdle: true },
           });
-        } else {
+        } else if (customRemindersEnabled) {
           const reminderEntries = Object.keys(subjects).sort().flatMap((name) =>
             (reminders?.[name] || []).map((time) => ({ name, subject: subjects[name], time })),
           ).filter(({ time }) => /^([01]\d|2[0-3]):[0-5]\d$/.test(time)).slice(0, MAX_SCHEDULED_REMINDERS);
@@ -184,7 +210,7 @@ export async function syncScheduledNotifications(
   } else {
     // On web/desktop, permissions are requested, but actual triggering is handled
     // via background check interval in App.tsx while the app is running.
-    if (enabled && (legacyTime || (reminders && Object.values(reminders).some((times) => times.length > 0)))) {
+    if (enabled && ((!customRemindersEnabled && legacyTime) || (customRemindersEnabled && reminders && Object.values(reminders).some((times) => times.length > 0)))) {
       await requestNotificationPermission();
     }
   }

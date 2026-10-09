@@ -16,7 +16,7 @@ import {
   Settings,
   SlidersHorizontal
 } from 'lucide-react';
-import { AppData, Subject } from './types';
+import { AppData, PresetPreferences, Subject } from './types';
 import { MOTIVATIONAL_QUOTES, DEFAULT_DATA } from './data';
 import KPICard from './components/KPICard';
 import SubjectCard from './components/SubjectCard';
@@ -52,6 +52,77 @@ const DAY_LABELS: Record<string, string> = {
   sat: 'Sat',
   sun: 'Sun'
 };
+const NOTIFICATION_REMINDERS_STORAGE_KEY = 'backlog_tracker_notification_reminders';
+
+function getPresetPreferences(data: AppData): PresetPreferences {
+  return {
+    theme: data.theme,
+    palette_color: data.palette_color,
+    show_quotes: data.show_quotes,
+    notification_enabled: data.notification_enabled,
+    notification_time: data.notification_time,
+    custom_notifications_enabled: data.custom_notifications_enabled,
+    notification_reminders: data.notification_reminders,
+  };
+}
+
+function inferActivePresetKey(data: Partial<AppData>): string | undefined {
+  const builtInTitles: Record<string, string> = {
+    study: 'Study Plan',
+    gaming: 'Gaming Backlog',
+    work: 'Work Queue',
+  };
+  if (data.active_preset_key && ['builtin:study', 'builtin:gaming', 'builtin:work'].includes(data.active_preset_key)) {
+    return data.active_preset_key;
+  }
+  if (data.active_preset_key === 'custom:current') return data.active_preset_key;
+  if (data.active_preset_key?.startsWith('custom:')) {
+    const activeCustomId = data.active_preset_key.slice('custom:'.length);
+    if (data.custom_presets?.some(preset => preset.id === activeCustomId)) return data.active_preset_key;
+  }
+  const builtIn = Object.entries(builtInTitles).find(([, title]) => title === data.course_name);
+  if (builtIn) return `builtin:${builtIn[0]}`;
+  const custom = data.custom_presets?.find(preset =>
+    `${preset.name} Backlog` === data.course_name || preset.name === data.course_name,
+  );
+  if (custom) return `custom:${custom.id}`;
+  return Object.keys(data.subjects || {}).length ? 'custom:current' : undefined;
+}
+
+function migrateLegacyGrowthPause(data: AppData): AppData {
+  if (data.auto_growth_enabled !== false) return data;
+  const pauseLegacySubject = (subject: Subject): Subject => ({
+      ...subject,
+      growth_mode: 'none' as const,
+      daily_increase: 0,
+      repeat_days: undefined,
+    });
+  return {
+    ...data,
+    auto_growth_enabled: true,
+    subjects: Object.fromEntries(Object.entries(data.subjects).map(([name, subject]) => [name, pauseLegacySubject(subject)])),
+    custom_presets: data.custom_presets?.map(preset => ({ ...preset, entries: preset.entries.map(pauseLegacySubject) })),
+    preset_overrides: data.preset_overrides
+      ? Object.fromEntries(Object.entries(data.preset_overrides).map(([key, entries]) => [key, entries.map(pauseLegacySubject)]))
+      : data.preset_overrides,
+  };
+}
+
+function readPersistedNotificationReminders(): Record<string, string[]> | undefined {
+  try {
+    const saved = localStorage.getItem(NOTIFICATION_REMINDERS_STORAGE_KEY);
+    if (!saved) return undefined;
+    const parsed: unknown = JSON.parse(saved);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, string[]] =>
+        Array.isArray(entry[1]) && entry[1].every((time) => typeof time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(time)),
+      ),
+    );
+  } catch {
+    return undefined;
+  }
+}
 
 function getGrowthMode(subject: Subject): 'none' | 'perday' | 'repeat' {
   const growth = subject.daily_increase ?? 0;
@@ -100,13 +171,29 @@ export default function App() {
     const saved = localStorage.getItem('backlog_tracker_data');
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        return { ...DEFAULT_DATA, ...parsed };
+        const parsed = migrateLegacyGrowthPause({ ...DEFAULT_DATA, ...JSON.parse(saved) });
+        const savedReminders = readPersistedNotificationReminders();
+        return {
+          ...parsed,
+          active_preset_key: inferActivePresetKey(parsed),
+          show_quotes: typeof parsed.show_quotes === 'boolean'
+            ? parsed.show_quotes
+            : localStorage.getItem('show_quotes') !== 'false',
+          notification_reminders: parsed.notification_reminders ?? savedReminders,
+        };
       } catch (e) {
-        return DEFAULT_DATA;
+        return {
+          ...DEFAULT_DATA,
+          show_quotes: localStorage.getItem('show_quotes') !== 'false',
+          notification_reminders: readPersistedNotificationReminders(),
+        };
       }
     }
-    return DEFAULT_DATA;
+    return {
+      ...DEFAULT_DATA,
+      show_quotes: localStorage.getItem('show_quotes') !== 'false',
+      notification_reminders: readPersistedNotificationReminders(),
+    };
   });
 
   const [wizardOpen, setWizardOpen] = useState(!data.setup_done);
@@ -125,14 +212,10 @@ export default function App() {
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [helpContext, setHelpContext] = useState<'setup' | 'dashboard'>('dashboard');
   const [showQuotes, setShowQuotes] = useState<boolean>(() => {
+    if (typeof data.show_quotes === 'boolean') return data.show_quotes;
     const saved = localStorage.getItem('show_quotes');
     return saved !== 'false';
   });
-
-  const handleToggleQuotes = (val: boolean) => {
-    setShowQuotes(val);
-    localStorage.setItem('show_quotes', String(val));
-  };
 
   const closeHelpModal = () => {
     localStorage.setItem(
@@ -227,58 +310,77 @@ export default function App() {
   useEffect(() => {
     syncScheduledNotifications(
       data.notification_enabled || false,
+      data.custom_notifications_enabled === true,
       data.notification_reminders,
       data.subjects,
       data.notification_time,
     );
-  }, [data.notification_enabled, data.notification_time, data.notification_reminders, data.subjects]);
+  }, [data.notification_enabled, data.custom_notifications_enabled, data.notification_time, data.notification_reminders, data.subjects]);
 
   // Desktop background notification handler
   useEffect(() => {
     if (Capacitor.isNativePlatform()) return;
 
+    let checkInProgress = false;
     const checkAndNotify = async () => {
-      if (!data.notification_enabled) return;
+      if (!data.notification_enabled || checkInProgress) return;
+      checkInProgress = true;
 
-      const now = new Date();
-      const todayStr = now.toDateString();
-      const schedules = data.notification_reminders ?? (data.notification_time
-        ? { __legacy__: [data.notification_time] }
-        : {});
-      for (const [name, times] of Object.entries(schedules)) {
-        for (const time of times) {
-          if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) continue;
-          const storageKey = `last_notified_${encodeURIComponent(name)}_${time}`;
-          if (localStorage.getItem(storageKey) === todayStr) continue;
+      try {
+        const now = new Date();
+        const todayStr = now.toDateString();
+        const isCustomMode = data.custom_notifications_enabled === true;
+        const schedules = isCustomMode
+          ? data.notification_reminders || {}
+          : data.notification_time ? { __legacy__: [data.notification_time] } : {};
+        for (const [name, times] of Object.entries(schedules)) {
+          for (const time of times) {
+            if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) continue;
+            const storageKey = `last_notified_${encodeURIComponent(name)}_${time}`;
+            if (localStorage.getItem(storageKey) === todayStr) continue;
 
-          const [targetHour, targetMinute] = time.split(':').map(Number);
-          const scheduledTime = new Date(now);
-          scheduledTime.setHours(targetHour, targetMinute, 0, 0);
-          if (now.getTime() < scheduledTime.getTime()) continue;
+            const [targetHour, targetMinute] = time.split(':').map(Number);
+            const scheduledTime = new Date(now);
+            scheduledTime.setHours(targetHour, targetMinute, 0, 0);
+            if (now.getTime() < scheduledTime.getTime()) continue;
 
-          const subject = data.subjects[name];
-          const title = subject ? `${subject.emoji} ${name}` : 'Backlog Tracker Reminder';
-          const body = subject
-            ? `${subject.backlog} pending item${subject.backlog === 1 ? '' : 's'} in this backlog.`
-            : 'It’s time to check your backlogs. 🎯';
-          const didNotify = await triggerDesktopNotification(title, body);
-          if (didNotify) localStorage.setItem(storageKey, todayStr);
+            const subject = data.subjects[name];
+            const title = subject ? `${subject.emoji} ${name}` : 'Backlog Tracker Reminder';
+            const totalBacklog = Object.values(data.subjects).reduce((sum, item) => sum + (item.backlog || 0), 0);
+            const body = subject
+              ? `${subject.backlog} pending item${subject.backlog === 1 ? '' : 's'} in this backlog.`
+              : totalBacklog > 0
+                ? `You have ${totalBacklog} pending backlog${totalBacklog === 1 ? '' : 's'} to clear today! 🎯`
+                : 'Your tracker is clear! Keep up the great work! 🌟';
+            const didNotify = await triggerDesktopNotification(title, body);
+            if (didNotify) localStorage.setItem(storageKey, todayStr);
+          }
         }
+      } finally {
+        checkInProgress = false;
       }
     };
 
-    // Run check immediately and then every 30 seconds
+    // Recheck on launch, tray restore, or when a backgrounded window wakes.
     void checkAndNotify();
-    const interval = setInterval(() => {
+    const interval = window.setInterval(() => {
       void checkAndNotify();
     }, 30000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void checkAndNotify();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    return () => clearInterval(interval);
-  }, [data.notification_enabled, data.notification_time, data.notification_reminders, data.subjects]);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [data.notification_enabled, data.custom_notifications_enabled, data.notification_time, data.notification_reminders, data.subjects]);
 
   const [currentQuote, setCurrentQuote] = useState(MOTIVATIONAL_QUOTES[0]);
   const displayedQuote = splitQuoteAttribution(currentQuote);
-  const autoGrowthEnabled = data.auto_growth_enabled !== false;
+  // Growth is controlled by each subject's schedule; the legacy global flag is ignored.
+  const autoGrowthEnabled = true;
 
   const [offlineSyncReport, setOfflineSyncReport] = useState<{
     daysElapsed: number;
@@ -340,16 +442,6 @@ export default function App() {
 
     if (todayStr <= lastStr) return;
 
-    if (!autoGrowthEnabled) {
-      const updatedData: AppData = {
-        ...data,
-        last_updated: todayStr
-      };
-      setData(updatedData);
-      localStorage.setItem('backlog_tracker_data', JSON.stringify(updatedData));
-      return;
-    }
-
     const diffDays = getCalendarDaysDifference(lastStr, todayStr);
     if (diffDays <= 0) return;
 
@@ -365,7 +457,7 @@ export default function App() {
       Object.keys(updatedSubjects).forEach(subName => {
         const sub = updatedSubjects[subName];
         if (sub.completion_mode === 'todo') return;
-        if (data.skip_sunday && isSundayObj && !sub.repeat_days?.length) return;
+        if ((sub.skip_sunday_growth ?? data.skip_sunday) && isSundayObj && getGrowthMode(sub) === 'perday') return;
         const added = getGrowthForDate(sub, nextDay);
         if (added <= 0) return;
         updatedSubjects[subName] = {
@@ -390,7 +482,7 @@ export default function App() {
       totalAdded,
       lastUpdatedDate: lastStr
     });
-  }, [data, autoGrowthEnabled]);
+  }, [data]);
 
   useEffect(() => {
     runDailyBacklogGrowth();
@@ -420,12 +512,52 @@ export default function App() {
   };
 
   const handleSaveData = (newData: AppData) => {
-    setData(newData);
-    localStorage.setItem('backlog_tracker_data', JSON.stringify(newData));
-    if (newData.custom_presets) {
-      localStorage.setItem('backlog_tracker_custom_presets', JSON.stringify(newData.custom_presets));
+    const dataToSave = newData.active_preset_key
+      ? {
+        ...newData,
+        preset_preferences: {
+          ...newData.preset_preferences,
+          [newData.active_preset_key]: getPresetPreferences(newData),
+        },
+      }
+      : newData;
+    setData(dataToSave);
+    if (typeof dataToSave.show_quotes === 'boolean') {
+      setShowQuotes(dataToSave.show_quotes);
+      localStorage.setItem('show_quotes', String(dataToSave.show_quotes));
+    }
+    localStorage.setItem('backlog_tracker_data', JSON.stringify(dataToSave));
+    if (dataToSave.notification_reminders !== undefined) {
+      localStorage.setItem(NOTIFICATION_REMINDERS_STORAGE_KEY, JSON.stringify(dataToSave.notification_reminders));
+    } else {
+      localStorage.removeItem(NOTIFICATION_REMINDERS_STORAGE_KEY);
+    }
+    if (dataToSave.custom_presets) {
+      localStorage.setItem('backlog_tracker_custom_presets', JSON.stringify(dataToSave.custom_presets));
     }
     setWizardOpen(false);
+  };
+
+  const handleToggleQuotes = (val: boolean) => {
+    handleSaveData({ ...data, show_quotes: val });
+  };
+
+  const handleImportFullBackup = (importedData: AppData) => {
+    const restoredData = resolveScheduleConflicts({
+      ...importedData,
+      active_preset_key: inferActivePresetKey(importedData),
+    });
+    handleSaveData(restoredData);
+    // Reconcile the native alarms after the import has committed to app state.
+    window.setTimeout(() => {
+      void syncScheduledNotifications(
+        restoredData.notification_enabled === true,
+        restoredData.custom_notifications_enabled === true,
+        restoredData.notification_reminders,
+        restoredData.subjects,
+        restoredData.notification_time,
+      );
+    }, 350);
   };
 
   const getSubjectsList = (): Subject[] => {
@@ -454,16 +586,14 @@ export default function App() {
   };
 
   const calculateTotalGrowth = (): number => {
-    if (!autoGrowthEnabled) return 0;
     return getSubjectsList().reduce((sum, s) => sum + (s.daily_increase ?? 0), 0);
   };
 
   const calculateGrowthForDate = (date: Date): number => {
-    if (!autoGrowthEnabled) return 0;
     const isSundayObj = date.getDay() === 0;
     return getSubjectsList().reduce((sum, sub) => {
       if (sub.completion_mode === 'todo') return sum;
-      if (data.skip_sunday && isSundayObj && !sub.repeat_days?.length) return sum;
+      if ((sub.skip_sunday_growth ?? data.skip_sunday) && isSundayObj && getGrowthMode(sub) === 'perday') return sum;
       return sum + getGrowthForDate(sub, date);
     }, 0);
   };
@@ -490,8 +620,7 @@ export default function App() {
     const hasRepeat = repeatRules.length > 0;
 
 
-    const activeDaysPerWeek = data.skip_sunday ? 6 : 7;
-    const perDayWeekly = perDayRules.reduce((sum, sub) => sum + (sub.daily_increase ?? 0) * activeDaysPerWeek, 0);
+    const perDayWeekly = perDayRules.reduce((sum, sub) => sum + (sub.daily_increase ?? 0) * ((sub.skip_sunday_growth ?? data.skip_sunday) ? 6 : 7), 0);
     const repeatWeekly = repeatRules.reduce((sum, sub) => {
       const selectedCount = (sub.repeat_days || []).length;
       return sum + (sub.daily_increase ?? 1) * selectedCount;
@@ -507,7 +636,7 @@ export default function App() {
       return {
         title: 'Daily Growth',
         value: `+${dailyGrowth}/day`,
-        subtitle: data.skip_sunday ? 'Daily rules skip Sunday' : 'Every day'
+        subtitle: 'Per-item Sunday settings'
       };
     }
 
@@ -647,7 +776,7 @@ export default function App() {
       Object.keys(currentSubjects).forEach(subName => {
         const sub = currentSubjects[subName];
         if (sub.completion_mode === 'todo') return;
-        if (data.skip_sunday && isSundayObj && !sub.repeat_days?.length) return;
+        if ((sub.skip_sunday_growth ?? data.skip_sunday) && isSundayObj && getGrowthMode(sub) === 'perday') return;
         const added = getGrowthForDate(sub, simulatedDay);
         if (added <= 0) return;
         currentSubjects[subName] = {
@@ -721,6 +850,7 @@ export default function App() {
         {helpModalOpen && <DeferredScreen><HelpModal isOpen={helpModalOpen} onClose={closeHelpModal} context="setup" /></DeferredScreen>}
         <DeferredScreen><SetupWizard
           initialData={data}
+          onImportFullBackup={handleImportFullBackup}
           onOpenHelp={() => {
             setHelpContext('setup');
             setHelpModalOpen(true);
@@ -752,6 +882,7 @@ export default function App() {
               palette_color: resolvedImport.palette_color || data.palette_color,
               theme: resolvedImport.theme || data.theme,
               auto_growth_enabled: resolvedImport.auto_growth_enabled ?? data.auto_growth_enabled,
+              active_preset_key: 'custom:current',
               setup_done: false
             });
             setWizardOpen(true);
@@ -825,12 +956,11 @@ export default function App() {
                 style={{ minHeight: '28px' }}
                 title="Next Motivational Insight"
               >
-                Next Quote
+                Next
               </button>
             </div>
             <div className="pr-16">
               <span className="text-[10px] text-brand uppercase tracking-wider font-extrabold block mb-1">
-                Daily Nudge
               </span>
               <p className="text-xs sm:text-sm text-[#1d1b20] dark:text-white font-semibold leading-relaxed">
                 “{displayedQuote.text}”
@@ -1069,7 +1199,7 @@ export default function App() {
           showQuotes={showQuotes}
           onToggleQuotes={handleToggleQuotes}
           onUpdateData={handleSaveData}
-          onImportFullBackup={(importedData) => handleSaveData(resolveScheduleConflicts(importedData))}
+          onImportFullBackup={handleImportFullBackup}
           onImportCourseDesign={(importedData) => {
             const resolvedImport = resolveScheduleConflicts(importedData);
             const mergedSubjects = { ...data.subjects };

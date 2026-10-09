@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AppData, CustomPreset, Subject } from '../types';
+import { AppData, CustomPreset, PresetPreferences, Subject } from '../types';
 import { getLocalDateString } from './date';
 
 export interface ValidationResult {
@@ -48,6 +48,10 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     }
   }
 
+  if (parsed.exportType !== undefined && parsed.exportType !== 'full_backup' && parsed.exportType !== 'course_design') {
+    return { success: false, error: `Unsupported exportType "${String(parsed.exportType)}".` };
+  }
+
   const entryMap = parsed.items ?? parsed.subjects;
   const entryLabel = parsed.items ? 'item' : 'subject';
   const entryCollectionLabel = parsed.items ? 'items' : 'subjects';
@@ -57,7 +61,7 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
   }
 
   const subjectsKeys = Object.keys(entryMap);
-  if (subjectsKeys.length === 0) {
+  if (subjectsKeys.length === 0 && parsed.exportType !== 'full_backup') {
     return { success: false, error: `The imported template has no ${entryCollectionLabel} configured.` };
   }
 
@@ -167,6 +171,10 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
       }
     }
 
+    if (sub.skip_sunday_growth !== undefined && typeof sub.skip_sunday_growth !== 'boolean') {
+      return { success: false, error: `The ${entryLabel} "${trimmedName}" has an invalid skip_sunday_growth value. Expected true or false.` };
+    }
+
     validatedSubjects[trimmedName] = {
       name: trimmedName,
       emoji,
@@ -176,12 +184,26 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
       perday_type,
       repeat_days,
       growth_mode,
+      skip_sunday_growth: sub.skip_sunday_growth,
       completion_mode,
       schedule_conflict: sub.growth_mode === undefined && hasExplicitPerday && hasRepeatDays,
     };
   }
 
-  const isFullBackup = hasBacklogField || parsed.last_updated !== undefined || parsed.setup_done !== undefined;
+  // Prefer the explicit marker in current exports. Legacy exports predate it,
+  // so retain the old field-based inference for those files.
+  const isFullBackup = parsed.exportType === 'full_backup' || (
+    parsed.exportType === undefined && (hasBacklogField || parsed.last_updated !== undefined || parsed.setup_done !== undefined)
+  );
+  // Older releases had one global growth switch. Preserve its intent while
+  // migrating it to each item's schedule during restore.
+  if (parsed.auto_growth_enabled === false) {
+    Object.values(validatedSubjects).forEach(subject => {
+      subject.growth_mode = 'none';
+      subject.daily_increase = 0;
+      subject.repeat_days = undefined;
+    });
+  }
   const exportType = isFullBackup ? 'full_backup' : 'course_design';
 
   const courseName = typeof parsed.title === 'string' && parsed.title.trim()
@@ -207,6 +229,10 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     ? parsed.theme
     : 'dark';
 
+  if (parsed.show_quotes !== undefined && typeof parsed.show_quotes !== 'boolean') {
+    return { success: false, error: 'show_quotes must be a boolean.' };
+  }
+
   if (parsed.palette_color !== undefined && (typeof parsed.palette_color !== 'string' || !HEX_COLOR.test(parsed.palette_color))) {
     return { success: false, error: 'palette_color must be a six-digit hex color such as #6750a4.' };
   }
@@ -216,9 +242,10 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     ? parsed.last_updated
     : getLocalDateString();
 
-  const notificationEnabled = parsed.notification_enabled !== undefined
-    ? Boolean(parsed.notification_enabled)
-    : undefined;
+  if (parsed.notification_enabled !== undefined && typeof parsed.notification_enabled !== 'boolean') {
+    return { success: false, error: 'notification_enabled must be a boolean.' };
+  }
+  const notificationEnabled = parsed.notification_enabled ?? false;
 
   const notificationTime = typeof parsed.notification_time === 'string' && /^\d{2}:\d{2}$/.test(parsed.notification_time)
     ? parsed.notification_time
@@ -247,11 +274,23 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     setup_done: isFullBackup ? (parsed.setup_done !== undefined ? Boolean(parsed.setup_done) : true) : false,
     theme: theme,
     palette_color: palette_color,
-    auto_growth_enabled: parsed.auto_growth_enabled !== undefined ? Boolean(parsed.auto_growth_enabled) : true,
+    show_quotes: parsed.show_quotes ?? true,
+    auto_growth_enabled: true,
     notification_enabled: notificationEnabled,
-    notification_time: notificationTime,
-    notification_reminders: notificationReminders,
+    notification_time: notificationTime || '20:00',
+    custom_notifications_enabled: parsed.custom_notifications_enabled !== undefined
+      ? Boolean(parsed.custom_notifications_enabled)
+      : false,
+    notification_reminders: notificationReminders || {},
   };
+
+  // Full restore replaces local state. Older backups lack newer collections,
+  // so initialize them empty instead of accidentally retaining this device's data.
+  if (isFullBackup) {
+    cleanData.custom_presets = [];
+    cleanData.preset_overrides = {};
+    cleanData.preset_preferences = {};
+  }
 
   if (parsed.custom_presets !== undefined) {
     if (!Array.isArray(parsed.custom_presets)) {
@@ -273,11 +312,13 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
       const entries = preset.entries.filter((entry): entry is Subject => {
         return Boolean(entry) && typeof entry.name === 'string' && entry.name.trim().length > 0 &&
           typeof entry.emoji === 'string' && typeof entry.color === 'string' && HEX_COLOR.test(entry.color) &&
-          Number.isFinite(entry.backlog) && entry.backlog >= 0 && Number.isFinite(entry.daily_increase) && entry.daily_increase >= 0;
+          Number.isFinite(entry.backlog) && entry.backlog >= 0 && Number.isFinite(entry.daily_increase) && entry.daily_increase >= 0 &&
+          (entry.skip_sunday_growth === undefined || typeof entry.skip_sunday_growth === 'boolean');
       }).map(entry => ({
         ...entry,
         name: entry.name.trim(),
         emoji: entry.emoji.trim() || '📚',
+        ...(parsed.auto_growth_enabled === false ? { growth_mode: 'none' as const, daily_increase: 0, repeat_days: undefined } : {}),
         repeat_days: entry.repeat_days?.filter(day => VALID_REPEAT_DAYS.has(day))
       }));
       if (entries.length !== preset.entries.length) {
@@ -300,11 +341,13 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
       const entries = rawEntries.filter((entry): entry is Subject => {
         return Boolean(entry) && typeof entry === 'object' && typeof entry.name === 'string' && entry.name.trim().length > 0 &&
           typeof entry.emoji === 'string' && typeof entry.color === 'string' && HEX_COLOR.test(entry.color) &&
-          Number.isFinite(entry.backlog) && entry.backlog >= 0 && Number.isFinite(entry.daily_increase) && entry.daily_increase >= 0;
+          Number.isFinite(entry.backlog) && entry.backlog >= 0 && Number.isFinite(entry.daily_increase) && entry.daily_increase >= 0 &&
+          (entry.skip_sunday_growth === undefined || typeof entry.skip_sunday_growth === 'boolean');
       }).map(entry => ({
         ...entry,
         name: entry.name.trim(),
         emoji: entry.emoji.trim() || '📚',
+        ...(parsed.auto_growth_enabled === false ? { growth_mode: 'none' as const, daily_increase: 0, repeat_days: undefined } : {}),
         repeat_days: entry.repeat_days?.filter(day => VALID_REPEAT_DAYS.has(day))
       }));
       if (entries.length !== rawEntries.length) {
@@ -314,6 +357,61 @@ export function validateAndParseImport(jsonString: string): ValidationResult {
     }
     cleanData.preset_overrides = overrides;
   }
+
+  if (parsed.preset_preferences !== undefined) {
+    if (!parsed.preset_preferences || typeof parsed.preset_preferences !== 'object' || Array.isArray(parsed.preset_preferences)) {
+      return { success: false, error: 'Invalid preset_preferences. Expected an object.' };
+    }
+    const preferences: Record<string, PresetPreferences> = {};
+    for (const [key, rawValue] of Object.entries(parsed.preset_preferences)) {
+      if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+        return { success: false, error: `Preset preferences for "${key}" must be an object.` };
+      }
+      const value = rawValue as Record<string, unknown>;
+      if (value.theme !== undefined && value.theme !== 'dark' && value.theme !== 'light') {
+        return { success: false, error: `Preset preferences for "${key}" contain an invalid theme.` };
+      }
+      if (value.palette_color !== undefined && (typeof value.palette_color !== 'string' || !HEX_COLOR.test(value.palette_color))) {
+        return { success: false, error: `Preset preferences for "${key}" contain an invalid palette_color.` };
+      }
+      for (const booleanKey of ['show_quotes', 'notification_enabled', 'custom_notifications_enabled']) {
+        if (value[booleanKey] !== undefined && typeof value[booleanKey] !== 'boolean') {
+          return { success: false, error: `Preset preferences for "${key}" require ${booleanKey} to be a boolean.` };
+        }
+      }
+      if (value.notification_time !== undefined && (typeof value.notification_time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.notification_time))) {
+        return { success: false, error: `Preset preferences for "${key}" contain an invalid notification_time.` };
+      }
+      let savedReminders: Record<string, string[]> | undefined;
+      if (value.notification_reminders !== undefined) {
+        if (!value.notification_reminders || typeof value.notification_reminders !== 'object' || Array.isArray(value.notification_reminders)) {
+          return { success: false, error: `Preset preferences for "${key}" contain invalid notification_reminders.` };
+        }
+        savedReminders = {};
+        for (const [subjectName, rawTimes] of Object.entries(value.notification_reminders)) {
+          if (!Array.isArray(rawTimes) || rawTimes.some(time => typeof time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time))) {
+            return { success: false, error: `Preset reminder times for "${subjectName}" must be HH:MM strings.` };
+          }
+          savedReminders[subjectName] = Array.from(new Set(rawTimes as string[])).sort();
+        }
+      }
+      preferences[key] = {
+        theme: value.theme as 'dark' | 'light' | undefined,
+        palette_color: value.palette_color as string | undefined,
+        show_quotes: value.show_quotes as boolean | undefined,
+        notification_enabled: value.notification_enabled as boolean | undefined,
+        notification_time: value.notification_time as string | undefined,
+        custom_notifications_enabled: value.custom_notifications_enabled as boolean | undefined,
+        notification_reminders: savedReminders,
+      };
+    }
+    cleanData.preset_preferences = preferences;
+  }
+
+  if (parsed.active_preset_key !== undefined && typeof parsed.active_preset_key !== 'string') {
+    return { success: false, error: 'active_preset_key must be a string.' };
+  }
+  if (typeof parsed.active_preset_key === 'string') cleanData.active_preset_key = parsed.active_preset_key;
 
   if (!isFullBackup) {
     Object.keys(cleanData.subjects).forEach(key => {
