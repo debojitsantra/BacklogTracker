@@ -84,13 +84,13 @@ jobs:
           appimage="$(find "$appimage_dir" -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$appimage"
 
-          # AppRun.wrapped is inside the SquashFS image. Make it readable and
-          # executable for the catalog tester and other users before repacking.
+          # Some Tauri AppImage builds lose the executable bit on AppRun and
+          # AppRun.wrapped. Restore both before repacking for catalog testers.
           chmod +x "$appimage"
           work_dir="$(mktemp -d)"
           trap 'rm -rf "$work_dir"' EXIT
           (cd "$work_dir" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null)
-          chmod 755 "$work_dir/squashfs-root/AppRun.wrapped"
+          chmod 755 "$work_dir/squashfs-root/AppRun" "$work_dir/squashfs-root/AppRun.wrapped"
 
           curl -fsSL \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
@@ -102,9 +102,10 @@ jobs:
           chmod +x "$work_dir/fixed.AppImage"
           mv "$work_dir/fixed.AppImage" "$appimage"
 
-          # Fail the build if repacking ever drops the executable permission.
+          # Fail the build if repacking ever drops either launcher permission.
           mkdir "$work_dir/verify"
           (cd "$work_dir/verify" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null)
+          test -x "$work_dir/verify/squashfs-root/AppRun"
           test "$(stat -c '%a' "$work_dir/verify/squashfs-root/AppRun.wrapped")" = 755
 
       - name: Upload build artifacts
