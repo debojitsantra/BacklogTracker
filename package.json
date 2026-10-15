@@ -24,7 +24,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "emoji-picker-react": "^4.19.1",
     "lucide-react": "^0.546.0",
-    "motion": "^12.42.2",
+    "motion": "^14.1.0",
     "react": "^19.0.1",
     "react-dom": "^19.2.7"
   },
