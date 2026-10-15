@@ -18,7 +18,7 @@
     "@capacitor/core": "^8.4.1",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/local-notifications": "^8.2.1",
-    "@capacitor/share": "^8.0.1",
+    "@capacitor/share": "^8.0.3",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@vitejs/plugin-react": "^5.0.4",
