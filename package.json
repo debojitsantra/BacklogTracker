@@ -16,7 +16,7 @@
   "dependencies": {
     "@capacitor/android": "^8.5.3",
     "@capacitor/core": "^8.4.1",
-    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/filesystem": "^8.1.4",
     "@capacitor/local-notifications": "^8.2.1",
     "@capacitor/share": "^8.0.1",
     "@tauri-apps/api": "^2.11.1",
